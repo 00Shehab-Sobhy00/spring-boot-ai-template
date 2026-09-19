@@ -12,10 +12,12 @@ What this catches, in order of how often it fires:
   * Unknown tokens → cited but present in no file ⇒ fabricated. Hard fail.
   * Over budget → more source files changed than ai/CAPACITY.md allows in one task, without a
     FAILED status or a resumable checkpoint. Hard fail.
+  * Over-citation → a skill cited for an area the diff does not touch. Warning (see
+    check_over_citation for why it is not yet a failure).
 
 Usage: scripts/check-ai-report.py --pr-body-file FILE --base <ref> [--no-diff]
-       (without --base there is no diff: area-specific tokens and the file budget are both
-        skipped; always_required tokens are still enforced)
+       (without --base there is no diff: area-specific tokens, the file budget and the
+        over-citation check are all skipped; always_required tokens are still enforced)
 """
 import glob
 import os
@@ -138,6 +140,40 @@ def check_budget(rep, status, paths):
             "`Reason: scope-too-large` with the split you propose.")
 
 
+def check_over_citation(rep, data, by_token, paths):
+    """Warn when `Skills-applied` cites a skill whose area this diff does not touch.
+
+    The reverse direction of the missing-token check: `Rules-read` is verified against the impact
+    map's `requires`, but `Skills-applied` was verified against nothing — and the same task drew
+    anywhere from 0 to 10 cited skills across models, which measures reporting style rather than
+    work done. Over-citation is the same failure class as a fabricated token: a report that looks
+    thorough without being true.
+
+    Deliberately a warning rather than a die(): a skill can be legitimately consulted without
+    leaving a file behind in its area (java-debug is the obvious one). Promote to die() only after
+    this has run clean on real PRs for a while.
+    """
+    if paths is None:
+        return
+    exempt = set(data.get("always_required", []))
+    area_matched = {}                # required file -> did any rule that requires it match?
+    for rule in data["rules"]:
+        if rule.get("scope"):        # content/enforcement rules carry `code: ''`, and an empty
+            continue                 # regex matches every path (same skip as the loop below)
+        matched = any(re.search(rule["code"], p) for p in paths)
+        for f in rule.get("requires", []):
+            area_matched[f] = area_matched.get(f, False) or matched
+
+    for token in TOKEN.findall(rep["Skills-applied"]):
+        path = by_token.get(token)
+        if path is None or path in exempt:
+            continue
+        if area_matched.get(path) is False:
+            print(f"::warning:: Skills-applied cites {token} ({path}) but the diff touches no "
+                  "file in its area — cite a skill only if the diff contains work in that "
+                  "skill's area (ai/CAPACITY.md)")
+
+
 def main():
     args = sys.argv[1:]
     body_file = args[args.index("--pr-body-file") + 1] if "--pr-body-file" in args else None
@@ -160,7 +196,7 @@ def main():
     if reason not in REASONS:
         die(f"Reason {rep['Reason']!r} is not one of {sorted(REASONS)}")
 
-    # One git call, shared by the budget check and the area tokens below.
+    # One git call, shared by the budget check, the over-citation check and the area tokens.
     paths = changed_paths(base) if base else None
 
     # ---- Budget (ai/CAPACITY.md) -------------------------------------------------------------
@@ -247,6 +283,8 @@ def main():
                 continue
             if any(re.search(rule["code"], p) for p in paths):
                 required.update(rule.get("requires", []))
+
+    check_over_citation(rep, data, by_token, paths)
 
     missing_files = sorted(p for p in required if p in known and known[p] not in cited)
     unknown_required = sorted(p for p in required if p not in known)
