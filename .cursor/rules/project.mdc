@@ -1,0 +1,18 @@
+---
+description: Enterprise Spring Boot AI configuration — entry point and rule files
+alwaysApply: true
+---
+All rules live under `ai/`. Read and follow, in order:
+@AGENTS.md
+@ai/AI_BEHAVIOR.md
+@ai/CAPACITY.md
+@ai/ARCHITECTURE.md
+@ai/BACKEND_RULES.md
+@ai/TESTING.md
+@ai/REVIEW.md
+@ai/PROJECT_MEMORY.md
+
+Task recipes are in `ai/skills/<name>/SKILL.md` — before a common task (endpoint, entity,
+consumer, cache, deployment), read the matching skill. End every non-trivial task with
+`ai/skills/sync-docs/SKILL.md`.
+Every task ends with the AI Run Report from `ai/CAPACITY.md`; `FAILED` with a reason beats a false `OK`.

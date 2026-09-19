@@ -1,0 +1,171 @@
+# SINGLE SOURCE for "what changed → which docs must change → which rules must have been read".
+#
+# Consumers (never duplicate this content anywhere else):
+#   - scripts/render-impact-table.py  → renders the table inside ai/skills/sync-docs/SKILL.md
+#   - scripts/check-docs-impact.py    → CI: code in an area changed ⇒ its docs changed, substantively
+#   - scripts/check-ai-report.py      → CI: the AI Run Report must cite the evidence tokens of
+#                                        every `requires` file for every area the PR touched
+#
+# Fields per rule:
+#   id           short stable key
+#   code         regex over changed paths (the trigger)
+#   docs         regex over changed paths — at least one must match
+#   identifiers  regex applied to ADDED lines of the code diff; every capture is an identifier that
+#                should also appear in ADDED lines of the matching docs. Empty = only require a
+#                substantive (non-blank, non-comment) doc edit.
+#   requires     rule/skill files whose evidence token must appear in the AI Run Report
+#   human        what to write in the sync-docs table (prose)
+#   severity     error | warn
+
+rules:
+  - id: api
+    # Feign/adapter wire DTOs live under client/dto and adapter/dto. They are a downstream
+    # contract, not our API surface — ai/skills/feign-client/SKILL.md step 3 requires them.
+    # Claiming them here demanded the create-rest-api token for PRs that add no endpoint.
+    code: 'Controller\.java$|(?<!/client)(?<!/adapter)/dto/.*\.java$'
+    docs: 'docs/api/'
+    identifiers: '"(/[a-z0-9\-/{}]+)"|class\s+(\w+(?:Request|Response|Dto))\b|"([A-Z]{2,}_[A-Z_]{3,})"'
+    requires: [ai/ARCHITECTURE.md, ai/skills/create-rest-api/SKILL.md]
+    human: >
+      OpenAPI annotations in code; `docs/api/error-catalog.md` for new codes; `docs/api/README.md`
+      link if a new spec file appears
+    severity: error
+
+  - id: consumer
+    code: 'Listener\.java$|Consumer\.java$'
+    docs: 'docs/messaging/consumers\.md'
+    identifiers: 'topics\s*=\s*"([^"]+)"|groupId\s*=\s*"([^"]+)"|class\s+(\w+(?:Listener|Consumer))\b'
+    requires: [ai/skills/kafka/SKILL.md]
+    human: '`docs/messaging/consumers.md`; `docs/architecture/components.md` "Subscribes" column'
+    severity: error
+
+  - id: producer
+    code: 'Producer\.java$|Publisher\.java$|Topics?\.java$'
+    docs: 'docs/messaging/(kafka-topics|producers|schemas)\.md'
+    identifiers: '"([a-z0-9]+(?:\.[a-z0-9\-]+){1,})"|class\s+(\w+(?:Producer|Publisher))\b'
+    requires: [ai/skills/kafka/SKILL.md, ai/patterns/outbox-pattern.md]
+    human: >
+      `docs/messaging/kafka-topics.md` (owner, key, retention, *why*), `docs/messaging/producers.md`,
+      `docs/messaging/schemas.md` (envelope + payload version), `components.md` "Publishes"
+    severity: error
+
+  - id: retry-dlq
+    code: '(Retry|Dlq|DeadLetter)[^/]*\.java$'
+    docs: 'docs/messaging/(retry-policy|dlq)\.md'
+    identifiers: ''
+    requires: [ai/skills/kafka/SKILL.md, ai/patterns/retry-pattern.md]
+    human: '`docs/messaging/retry-policy.md`, `docs/messaging/dlq.md`'
+    severity: error
+
+  - id: migration
+    code: 'src/main/resources/liquibase/'
+    docs: 'docs/database/|ai/PROJECT_MEMORY\.md|adr/'
+    identifiers: ''
+    requires: [ai/BACKEND_RULES.md, ai/skills/database/SKILL.md]
+    human: >
+      `docs/database/schema-conventions.md` only if a convention changed; ADR if a modeling
+      decision; `PROJECT_MEMORY.md` → Active Migrations for expand/contract in flight
+    severity: error
+
+  - id: feign
+    code: 'Client\.java$|FeignClient|/client/dto/.*\.java$'
+    docs: 'docs/architecture/components\.md'
+    identifiers: 'name\s*=\s*"([^"]+)"|class|interface\s+(\w+Client)\b'
+    requires: [ai/skills/feign-client/SKILL.md, ai/skills/resilience/SKILL.md]
+    human: >
+      `components.md` "Consumes" column + diagram; `docs/deployment/networking.md` if it needs
+      proxy/mesh config
+    severity: error
+
+  - id: config
+    code: 'application[^/]*\.ya?ml$'
+    docs: 'docs/deployment/environments\.md|helm/values'
+    identifiers: '^\+\s*([a-z][a-z0-9\-]+(?:\.[a-z][a-z0-9\-]+)+)\s*:'
+    requires: [ai/BACKEND_RULES.md]
+    human: '`docs/deployment/environments.md`; comment in `helm/values.yaml` if it has a chart value'
+    severity: error
+
+  - id: helm
+    code: 'helm/templates/'
+    docs: 'helm/README\.md|docs/deployment/'
+    identifiers: ''
+    requires: [ai/skills/deployment/SKILL.md]
+    human: '`helm/README.md` ground rules if a rule changed; `docs/deployment/runbook.md` if it affects rollout'
+    severity: error
+
+  - id: observability
+    code: 'src/main/java/.*(Alert|Metric|Metrics)[^/]*\.java$'
+    docs: 'docs/observability/'
+    identifiers: '"([a-z][a-z0-9_]+(?:\.[a-z0-9_]+)+)"'
+    requires: [ai/skills/observability/SKILL.md]
+    human: >
+      `docs/observability/metrics-catalog.md`; `slos.md`; **every alert gets a `runbook.md` row**
+    severity: error
+
+  - id: feature-flag
+    code: '(Flag|Toggle)[^/]*\.java$'
+    docs: 'ai/patterns/feature-flags\.md'
+    identifiers: ''
+    requires: [ai/patterns/feature-flags.md]
+    human: '`ai/patterns/feature-flags.md` inventory section; removal date in `PROJECT_MEMORY.md`'
+    severity: warn
+
+  - id: business-rule
+    code: 'BR-[0-9]{3}'          # matched against ADDED diff lines, not paths (see `scope`)
+    scope: content
+    docs: 'docs/business/rules\.md'
+    identifiers: '(BR-[0-9]{3})'
+    requires: [ai/skills/sync-docs/SKILL.md]
+    human: '`docs/business/rules.md` (`BR-nnn`) — or hand to a human'
+    severity: error
+
+  # Catches the case `business-rule` structurally cannot: code that implements a registered rule
+  # is EDITED OR DELETED without ever naming it. Triggered by removals inside a hunk that
+  # references a BR id registered in docs/business/rules.md — i.e. an existing annotated
+  # condition was disturbed. Omitting the `// BR-nnn` comment is no longer a way past CI.
+  - id: business-rule-drift
+    code: ''                     # not path-matched; see `scope`
+    scope: enforcement
+    docs: 'docs/business/rules\.md'
+    identifiers: '(BR-[0-9]{3})'
+    requires: [ai/skills/sync-docs/SKILL.md]
+    human: >
+      An annotated `BR-nnn` condition was modified or removed. Update that rule's row in
+      `docs/business/rules.md` (or hand to its Owner) — the owner column is who may change it.
+    severity: error
+
+  - id: arch
+    code: 'ai/ARCHITECTURE\.md$'
+    docs: 'enforcement/archunit/'
+    identifiers: ''
+    requires: [ai/ARCHITECTURE.md]
+    human: >
+      `enforcement/archunit/ArchitectureRulesTest.java` — the rule you changed in prose must change in
+      the executable form too, same PR
+    severity: error
+
+  - id: ledger
+    code: 'src/main/java/'
+    docs: 'ai/skills/_candidates\.md'
+    identifiers: ''
+    requires: []
+    human: '`ai/skills/_candidates.md` (task shape)'
+    severity: warn
+
+# Rows that are pure guidance for the agent (no CI trigger). Rendered into the table, not checked.
+guidance:
+  - changed: 'New microservice'
+    human: >
+      `components.md` inventory row + per-service section + diagram; `docs/architecture/context.md`;
+      `docs/deployment/environments.md`
+  - changed: 'Domain term used for the first time'
+    human: '`docs/business/domain-glossary.md`'
+  - changed: 'Deprecating a class/endpoint/topic'
+    human: >
+      `PROJECT_MEMORY.md` → Deprecated / Do Not Use; deprecation window in `docs/api/conventions.md`
+      terms
+
+# Files whose evidence token is required in EVERY AI Run Report, regardless of area.
+always_required:
+  - ai/CAPACITY.md
+  - ai/AI_BEHAVIOR.md

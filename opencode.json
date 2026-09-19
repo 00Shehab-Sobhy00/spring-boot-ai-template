@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md",
+    "ai/AI_BEHAVIOR.md",
+    "ai/CAPACITY.md",
+    "ai/ARCHITECTURE.md",
+    "ai/BACKEND_RULES.md",
+    "ai/TESTING.md",
+    "ai/REVIEW.md",
+    "ai/PROJECT_MEMORY.md"
+  ],
+  "skills": [
+    "./ai/skills"
+  ]
+}

@@ -1,0 +1,106 @@
+# Keeps the AI template honest — and surfaces when the AI could not do the job. Runs on every PR.
+# Every job is blocking. If you need to loosen one, do it with a PR that says why.
+name: template-checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  links-skills-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyyaml
+      - run: python3 scripts/check-links.py
+      - run: python3 scripts/check-skill-frontmatter.py
+      # ai/impact-map.yaml is the single source; the table in sync-docs is rendered from it
+      - run: python3 scripts/render-impact-table.py --check
+      # instruction load per task must stay within what a model retains
+      - run: python3 scripts/check-context-budget.py
+
+  markdown-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npx --yes markdownlint-cli2
+
+  docs-impact:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyyaml
+      - name: Save PR body
+        env: { PR_BODY: "${{ github.event.pull_request.body }}" }
+        run: printf '%s' "$PR_BODY" > /tmp/pr-body.md
+      - name: Code changed in a documented area must update its docs (substantively)
+        run: python3 scripts/check-docs-impact.py origin/${{ github.base_ref }} --pr-body-file /tmp/pr-body.md
+      - run: scripts/check-business-rules.sh
+
+  ai-run-report:
+    # The pipe that surfaces "the LLM could not handle this task":
+    #   exit 3 → agent reported FAILED (with reason + checkpoint)
+    #   exit 4 → INSTRUCTION-RETENTION-FAILURE: required rule files were not cited ⇒ never read or
+    #            lost from context before the report was written
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyyaml
+      - name: Save PR body
+        env: { PR_BODY: "${{ github.event.pull_request.body }}" }
+        run: printf '%s' "$PR_BODY" > /tmp/pr-body.md
+      - name: Parse and enforce the AI Run Report
+        id: report
+        run: python3 scripts/check-ai-report.py --pr-body-file /tmp/pr-body.md --base origin/${{ github.base_ref }}
+      - name: Label the PR with the outcome
+        if: always()
+        uses: actions/github-script@v7
+        env: { OUTCOME: "${{ steps.report.outcome }}" }
+        with:
+          script: |
+            const ok = process.env.OUTCOME === 'success';
+            const label = ok ? 'ai:ok' : 'ai:needs-attention';
+            await github.rest.issues.addLabels({ ...context.repo, issue_number: context.issue.number, labels: [label] });
+
+  # generated-docs:
+  #   # Regenerate derived docs so nobody hand-maintains them (see docs/GENERATED.md).
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: scripts/generate-topic-catalog.py > docs/messaging/kafka-topics.generated.md
+  #     - run: scripts/generate-components-inventory.py ..
+  #     - run: mvn -q springdoc-openapi:generate   # per service; commit docs/api/<service>.yaml
+  #     - run: git diff --exit-code docs/ || (echo "generated docs are stale — commit the regenerated files"; exit 1)
+
+  # architecture:
+  #   # Per service, once enforcement/archunit/ is installed there (see its README).
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: mvn -q test -Dtest=ArchitectureRulesTest -pl <service>
+
+  # agent-doc-proposal:
+  #   # Optional: run the coding agent headless with ai/prompts/sync-docs.md against the diff and
+  #   # post the proposed doc edits as a PR comment. The human accepts; the agent never commits.
+  #   if: github.event_name == 'pull_request'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with: { fetch-depth: 0 }
+  #     - run: |
+  #         opencode run --file ai/prompts/sync-docs.md \
+  #           --var base=origin/${{ github.base_ref }} --var head=HEAD > proposal.md
+  #     - uses: marocchino/sticky-pull-request-comment@v2
+  #       with: { path: proposal.md }

@@ -1,0 +1,40 @@
+# Defaults — override per environment in values-<env>.yaml, not here and not in templates.
+replicaCount: 2
+
+image:
+  repository: registry.example.com/service-template
+  tag: ""            # set by CI
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8080
+
+ingress:
+  enabled: false
+  host: ""
+
+mesh:
+  enabled: true
+  # Keep mesh-level retry/timeout choices explicit; they stack with app-level settings.
+  timeout: 10s
+  retries:
+    attempts: 0       # default: the APP owns retries; raise here only deliberately, per route
+    perTryTimeout: 2s
+
+resources:
+  requests: { cpu: 250m, memory: 512Mi }
+  limits:   { cpu: "1",  memory: 1Gi }   # align with JVM MaxRAMPercentage in the Dockerfile
+
+probes:
+  liveness:  { path: /actuator/health/liveness,  initialDelaySeconds: 20, periodSeconds: 10 }
+  readiness: { path: /actuator/health/readiness, initialDelaySeconds: 15, periodSeconds: 5 }
+  startup:   { path: /actuator/health/liveness,  failureThreshold: 30, periodSeconds: 5 }
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+env: []               # non-secret env vars
+# Secrets come from the platform secret manager / external-secrets — never from values files in git.

@@ -1,0 +1,17 @@
+{{- if .Values.mesh.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ .Chart.Name }}
+spec:
+  host: {{ .Chart.Name }}
+  trafficPolicy:
+    connectionPool:
+      http:
+        http1MaxPendingRequests: 100
+        maxRequestsPerConnection: 0
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+{{- end }}

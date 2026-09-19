@@ -1,0 +1,20 @@
+{{- if .Values.mesh.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ .Chart.Name }}
+spec:
+  hosts: [ {{ .Chart.Name }} ]
+  http:
+    - route:
+        - destination:
+            host: {{ .Chart.Name }}
+            port: { number: {{ .Values.service.port }} }
+      timeout: {{ .Values.mesh.timeout }}
+      {{- if gt (int .Values.mesh.retries.attempts) 0 }}
+      retries:
+        attempts: {{ .Values.mesh.retries.attempts }}
+        perTryTimeout: {{ .Values.mesh.retries.perTryTimeout }}
+        retryOn: connect-failure,refused-stream,unavailable
+      {{- end }}
+{{- end }}

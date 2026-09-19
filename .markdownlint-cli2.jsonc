@@ -1,0 +1,30 @@
+{
+  // Lint rules for this template's markdown. Anything disabled below is a
+  // deliberate convention, not an oversight — the reason is on each line.
+  "config": {
+    "default": true,
+
+    // Prose wraps at 100; tables and code blocks are exempt because breaking
+    // them changes meaning (a wrapped table row stops being a table).
+    "MD013": {
+      "line_length": 100,
+      "tables": false,
+      "code_blocks": false,
+      "headings": false
+    },
+
+    // AGENTS.md and the rule files use several top-level headings as section
+    // dividers on purpose — they are routing targets, not one document title.
+    "MD025": false,
+    "MD041": false,
+
+    // Tables use one space around every pipe, with no column padding — padding
+    // makes every table a full-width diff whenever one cell's text changes.
+    "MD060": { "style": "compact" },
+
+    // Angle-bracket placeholders (<who>, <service>) read better than backticks
+    // in the ADR and doc templates people fill in by hand.
+    "MD033": { "allowed_elements": ["who", "service", "name", "env", "product", "n"] }
+  },
+  "globs": ["**/*.md", "!node_modules", "!eval/runs"]
+}
