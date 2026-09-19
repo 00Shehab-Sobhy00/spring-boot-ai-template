@@ -10,9 +10,14 @@ What this catches, in order of how often it fires:
     Most likely cause: never read, or fell out of the context window. Reported as
     `instruction-retention-failure` so it is distinguishable from an ordinary rule violation.
   * Unknown tokens → cited but present in no file ⇒ fabricated. Hard fail.
+  * Over budget → more source files changed than ai/CAPACITY.md allows in one task, without a
+    FAILED status or a resumable checkpoint. Hard fail.
+  * Over-citation → a skill cited for an area the diff does not touch. Warning (see
+    check_over_citation for why it is not yet a failure).
 
 Usage: scripts/check-ai-report.py --pr-body-file FILE --base <ref> [--no-diff]
-       (without --base, area-specific tokens are not checked; always_required still are)
+       (without --base there is no diff: area-specific tokens, the file budget and the
+        over-citation check are all skipped; always_required tokens are still enforced)
 """
 import glob
 import os
@@ -21,6 +26,13 @@ import subprocess
 import sys
 
 import yaml
+
+# The messages below contain "→" and "⇒", which cp1252 cannot encode — on a Windows console the
+# INSTRUCTION-RETENTION-FAILURE report died mid-print with a UnicodeEncodeError, turning its
+# deliberate exit 4 into an exit 1 traceback. The strongest check in the template must not be the
+# one that crashes when someone runs it locally.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # The repo under inspection is the CWD when it differs from the script's own repo —
 # eval/run.sh invokes these from a worktree of a *different* repository, and anchoring
@@ -54,6 +66,11 @@ REQUIRED = ["Status", "Reason", "Model", "Task-shape", "Rules-read", "Skills-app
             "Patterns-applied", "Files-edited", "Verified", "Unverified", "Assumptions",
             "Needs-human", "Checkpoint"]
 CANARY = "CANARY-7QW3ZP"
+# ai/CAPACITY.md → Budget: "> 12 source files to edit in one task → split into ordered sub-tasks
+# ... or declare FAILED / scope-too-large". Mirrored here because the rule text cannot be parsed;
+# change one and change the other, or the budget and its enforcement drift apart silently.
+SOURCE_FILE_BUDGET = 12
+SOURCE_PATH = re.compile(r"(^|/)src/(main|test)/")
 REASONS = {"none", "context-overflow", "contradictory-rules", "missing-business-rule",
            "rule-ownership-conflict",
            "unverifiable", "scope-too-large", "tooling", "instructions-ambiguous"}
@@ -70,7 +87,9 @@ def load_tokens():
     for path in glob.glob(os.path.join(ROOT, "ai", "**", "*.md"), recursive=True):
         m = TOKEN_LINE.search(open(path, encoding="utf-8", errors="replace").read())
         if m:
-            tokens[os.path.relpath(path, ROOT)] = m.group(1)
+            # POSIX separators: impact-map.yaml spells its `requires` paths with "/", and on
+            # Windows relpath would yield "ai\skills\..." — every lookup below would miss.
+            tokens[os.path.relpath(path, ROOT).replace(os.sep, "/")] = m.group(1)
     return tokens
 
 
@@ -91,6 +110,68 @@ def changed_paths(base):
     out = subprocess.run(["git", "diff", "--name-only", f"{base}...HEAD"], cwd=ROOT,
                          capture_output=True, text=True, check=False).stdout
     return out.split()
+
+
+def check_budget(rep, status, paths):
+    """ai/CAPACITY.md → Budget: more than SOURCE_FILE_BUDGET source files in one task must be
+    split, or reported as FAILED / scope-too-large with a resumable checkpoint.
+
+    `Files-edited` was required by the report format, parsed, and then never used — so the budget
+    was stated but never enforced, and runs editing 30-50 files reported a passing status. Counted
+    against the real diff rather than the self-report, and restricted to src/main + src/test
+    because the rule says *source* files (docs, helm and k8s do not count).
+    """
+    if paths is None:
+        return                       # no --base: no diff to count. Same graceful degradation as
+                                     # the area-token check, which also silently skips without it.
+    count = sum(1 for p in paths if SOURCE_PATH.search(p))
+
+    m = re.search(r"\d+", rep["Files-edited"])
+    if m and count and abs(int(m.group()) - count) > 0.2 * count:
+        print(f"::warning:: Files-edited says {m.group()} but the diff changes {count} source "
+              "file(s). An agent that has lost track of the size of its own diff has usually lost "
+              "track of more than that (ai/CAPACITY.md)")
+
+    unresumable = rep["Checkpoint"].strip().lower() in {"n/a", "", "none"}
+    if count > SOURCE_FILE_BUDGET and status != "FAILED" and unresumable:
+        die(f"{count} source files changed, over the {SOURCE_FILE_BUDGET}-file budget in "
+            f"ai/CAPACITY.md, with Status {status} and no Checkpoint. Split the task into ordered "
+            "sub-tasks each with its own report, or report `Status: FAILED` / "
+            "`Reason: scope-too-large` with the split you propose.")
+
+
+def check_over_citation(rep, data, by_token, paths):
+    """Warn when `Skills-applied` cites a skill whose area this diff does not touch.
+
+    The reverse direction of the missing-token check: `Rules-read` is verified against the impact
+    map's `requires`, but `Skills-applied` was verified against nothing — and the same task drew
+    anywhere from 0 to 10 cited skills across models, which measures reporting style rather than
+    work done. Over-citation is the same failure class as a fabricated token: a report that looks
+    thorough without being true.
+
+    Deliberately a warning rather than a die(): a skill can be legitimately consulted without
+    leaving a file behind in its area (java-debug is the obvious one). Promote to die() only after
+    this has run clean on real PRs for a while.
+    """
+    if paths is None:
+        return
+    exempt = set(data.get("always_required", []))
+    area_matched = {}                # required file -> did any rule that requires it match?
+    for rule in data["rules"]:
+        if rule.get("scope"):        # content/enforcement rules carry `code: ''`, and an empty
+            continue                 # regex matches every path (same skip as the loop below)
+        matched = any(re.search(rule["code"], p) for p in paths)
+        for f in rule.get("requires", []):
+            area_matched[f] = area_matched.get(f, False) or matched
+
+    for token in TOKEN.findall(rep["Skills-applied"]):
+        path = by_token.get(token)
+        if path is None or path in exempt:
+            continue
+        if area_matched.get(path) is False:
+            print(f"::warning:: Skills-applied cites {token} ({path}) but the diff touches no "
+                  "file in its area — cite a skill only if the diff contains work in that "
+                  "skill's area (ai/CAPACITY.md)")
 
 
 def main():
@@ -114,6 +195,12 @@ def main():
         die(f"Status must be OK | DEGRADED | FAILED, got {rep['Status']!r}")
     if reason not in REASONS:
         die(f"Reason {rep['Reason']!r} is not one of {sorted(REASONS)}")
+
+    # One git call, shared by the budget check, the over-citation check and the area tokens.
+    paths = changed_paths(base) if base else None
+
+    # ---- Budget (ai/CAPACITY.md) -------------------------------------------------------------
+    check_budget(rep, status, paths)
 
     # ---- FAILED: the designed outcome for "LLM cannot handle this" ---------------------------
     if status == "FAILED":
@@ -186,8 +273,7 @@ def main():
 
     data = yaml.safe_load(open(MAP, encoding="utf-8"))
     required = set(data.get("always_required", []))
-    if base:
-        paths = changed_paths(base)
+    if paths is not None:
         for rule in data["rules"]:
             # Any non-path scope (content, enforcement) is triggered by diff *content*, not by
             # file paths, and is evaluated in check-docs-impact. Skipping them generically also
@@ -197,6 +283,8 @@ def main():
                 continue
             if any(re.search(rule["code"], p) for p in paths):
                 required.update(rule.get("requires", []))
+
+    check_over_citation(rep, data, by_token, paths)
 
     missing_files = sorted(p for p in required if p in known and known[p] not in cited)
     unknown_required = sorted(p for p in required if p not in known)

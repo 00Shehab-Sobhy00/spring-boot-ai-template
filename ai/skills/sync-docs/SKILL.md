@@ -52,7 +52,7 @@ YAML, run `scripts/render-impact-table.py`, never edit the table by hand (CI che
 | Changed (path or construct) | Update | Rule tokens required in the AI Run Report | CI |
 | --- | --- | --- | --- |
 | `Controller\.java$` / `(?<!/client)(?<!/adapter)/dto/.*\.java$` | OpenAPI annotations in code; `docs/api/error-catalog.md` for new codes; `docs/api/README.md` link if a new spec file appears | `ai/ARCHITECTURE.md`, `ai/skills/create-rest-api/SKILL.md` | error |
-| `Listener\.java$` / `Consumer\.java$` | `docs/messaging/consumers.md`; `docs/architecture/components.md` "Subscribes" column | `ai/skills/kafka/SKILL.md` | error |
+| `Listener\.java$` / `Consumer\.java$` | `docs/messaging/consumers.md`; `docs/architecture/components.md` "Subscribes" column | `ai/skills/kafka/SKILL.md`, `ai/skills/kafka/references/dead-letter-queue.md` | error |
 | `Producer\.java$` / `Publisher\.java$` / `Topics?\.java$` | `docs/messaging/kafka-topics.md` (owner, key, retention, *why*), `docs/messaging/producers.md`, `docs/messaging/schemas.md` (envelope + payload version), `components.md` "Publishes" | `ai/skills/kafka/SKILL.md`, `ai/patterns/outbox-pattern.md` | error |
 | `(Retry` / `Dlq` / `DeadLetter)[^/]*\.java$` | `docs/messaging/retry-policy.md`, `docs/messaging/dlq.md` | `ai/skills/kafka/SKILL.md`, `ai/patterns/retry-pattern.md` | error |
 | `src/main/resources/liquibase/` | `docs/database/schema-conventions.md` only if a convention changed; ADR if a modeling decision; `PROJECT_MEMORY.md` → Active Migrations for expand/contract in flight | `ai/BACKEND_RULES.md`, `ai/skills/database/SKILL.md` | error |

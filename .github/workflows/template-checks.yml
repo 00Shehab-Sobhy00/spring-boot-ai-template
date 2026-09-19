@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
 
+# Least privilege by default; the one job that needs to write asks for it explicitly below.
+# Without this block a repo whose default workflow permission is read-only 403s on the label step.
+permissions:
+  contents: read
+
 jobs:
   links-skills-budget:
     runs-on: ubuntu-latest
@@ -43,7 +48,10 @@ jobs:
         run: printf '%s' "$PR_BODY" > /tmp/pr-body.md
       - name: Code changed in a documented area must update its docs (substantively)
         run: python3 scripts/check-docs-impact.py origin/${{ github.base_ref }} --pr-body-file /tmp/pr-body.md
-      - run: scripts/check-business-rules.sh
+      # Invoked through `bash` on purpose: the exec bit is set in the index, but this template is
+      # also developed on Windows, where core.filemode is off and a re-add silently drops it. The
+      # symptom is an opaque `Permission denied` / exit 126, not a check failure.
+      - run: bash scripts/check-business-rules.sh
 
   ai-run-report:
     # The pipe that surfaces "the LLM could not handle this task":
@@ -52,6 +60,14 @@ jobs:
     #            lost from context before the report was written
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # `issues: write` is what addLabels needs (the API reports it as
+    # `x-accepted-github-permissions: issues=write; pull_requests=write`). Note this cannot help a
+    # PR from a fork: that token is read-only whatever is written here, which is why the label step
+    # below is allowed to fail.
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -64,15 +80,27 @@ jobs:
       - name: Parse and enforce the AI Run Report
         id: report
         run: python3 scripts/check-ai-report.py --pr-body-file /tmp/pr-body.md --base origin/${{ github.base_ref }}
+      # Cosmetic. The real signal is the exit code of the step above — 3 = agent reported FAILED,
+      # 4 = INSTRUCTION-RETENTION-FAILURE. Labelling must never be what turns a run red, so it is
+      # skipped for forks (read-only token regardless of `permissions`) and swallows its own errors
+      # into a warning. v8 is the Node 24 build; v7 runs on the deprecated Node 20.
       - name: Label the PR with the outcome
-        if: always()
-        uses: actions/github-script@v7
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v8
         env: { OUTCOME: "${{ steps.report.outcome }}" }
         with:
           script: |
             const ok = process.env.OUTCOME === 'success';
             const label = ok ? 'ai:ok' : 'ai:needs-attention';
-            await github.rest.issues.addLabels({ ...context.repo, issue_number: context.issue.number, labels: [label] });
+            try {
+              await github.rest.issues.addLabels({ ...context.repo, issue_number: context.issue.number, labels: [label] });
+            } catch (e) {
+              core.warning(
+                `Could not label this PR ${label} (HTTP ${e.status}). The AI Run Report result is ` +
+                `unaffected — read the step above. Fix: Settings → Actions → General → Workflow ` +
+                `permissions → "Read and write permissions".`);
+            }
 
   # generated-docs:
   #   # Regenerate derived docs so nobody hand-maintains them (see docs/GENERATED.md).

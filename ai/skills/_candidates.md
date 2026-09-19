@@ -34,6 +34,7 @@ the skill automatically — it means raise it, and a human decides.
 | Task shape | Count | Last seen | Existing skill? | Notes |
 | --- | --- | --- | --- | --- |
 | *example: adding a scheduled cleanup job* | 2 | 2024-03-01 | no | *both times we got the batching wrong the first try* |
+| Closing a gap between a stated rule and its CI check | 1 | 2026-09-19 | no | the rule existed in `ai/CAPACITY.md`; the script parsed the field and never used it |
 
 ## Promoted (became skills)
 
