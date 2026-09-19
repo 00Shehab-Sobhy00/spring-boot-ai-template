@@ -35,7 +35,10 @@ rules:
     code: 'Listener\.java$|Consumer\.java$'
     docs: 'docs/messaging/consumers\.md'
     identifiers: 'topics\s*=\s*"([^"]+)"|groupId\s*=\s*"([^"]+)"|class\s+(\w+(?:Listener|Consumer))\b'
-    requires: [ai/skills/kafka/SKILL.md]
+    # `retry-dlq` below only fires on a DLQ file that ALREADY exists, so nothing required poison
+    # handling of a *new* consumer — and no measured run ever implemented one. Required here
+    # instead: every consumer decides what happens to a message it can never process.
+    requires: [ai/skills/kafka/SKILL.md, ai/skills/kafka/references/dead-letter-queue.md]
     human: '`docs/messaging/consumers.md`; `docs/architecture/components.md` "Subscribes" column'
     severity: error
 

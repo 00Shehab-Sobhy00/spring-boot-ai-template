@@ -1,3 +1,5 @@
+<!-- evidence-token: SKKDLQ-G4DXLD — cite in the AI Run Report -->
+
 # Add / Use a Dead-Letter Queue
 
 Follows `docs/messaging/dlq.md` and `docs/messaging/retry-policy.md`. A DLQ handles *permanent*
