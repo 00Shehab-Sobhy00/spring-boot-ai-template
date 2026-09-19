@@ -10,9 +10,12 @@ What this catches, in order of how often it fires:
     Most likely cause: never read, or fell out of the context window. Reported as
     `instruction-retention-failure` so it is distinguishable from an ordinary rule violation.
   * Unknown tokens → cited but present in no file ⇒ fabricated. Hard fail.
+  * Over budget → more source files changed than ai/CAPACITY.md allows in one task, without a
+    FAILED status or a resumable checkpoint. Hard fail.
 
 Usage: scripts/check-ai-report.py --pr-body-file FILE --base <ref> [--no-diff]
-       (without --base, area-specific tokens are not checked; always_required still are)
+       (without --base there is no diff: area-specific tokens and the file budget are both
+        skipped; always_required tokens are still enforced)
 """
 import glob
 import os
@@ -61,6 +64,11 @@ REQUIRED = ["Status", "Reason", "Model", "Task-shape", "Rules-read", "Skills-app
             "Patterns-applied", "Files-edited", "Verified", "Unverified", "Assumptions",
             "Needs-human", "Checkpoint"]
 CANARY = "CANARY-7QW3ZP"
+# ai/CAPACITY.md → Budget: "> 12 source files to edit in one task → split into ordered sub-tasks
+# ... or declare FAILED / scope-too-large". Mirrored here because the rule text cannot be parsed;
+# change one and change the other, or the budget and its enforcement drift apart silently.
+SOURCE_FILE_BUDGET = 12
+SOURCE_PATH = re.compile(r"(^|/)src/(main|test)/")
 REASONS = {"none", "context-overflow", "contradictory-rules", "missing-business-rule",
            "rule-ownership-conflict",
            "unverifiable", "scope-too-large", "tooling", "instructions-ambiguous"}
@@ -102,6 +110,34 @@ def changed_paths(base):
     return out.split()
 
 
+def check_budget(rep, status, paths):
+    """ai/CAPACITY.md → Budget: more than SOURCE_FILE_BUDGET source files in one task must be
+    split, or reported as FAILED / scope-too-large with a resumable checkpoint.
+
+    `Files-edited` was required by the report format, parsed, and then never used — so the budget
+    was stated but never enforced, and runs editing 30-50 files reported a passing status. Counted
+    against the real diff rather than the self-report, and restricted to src/main + src/test
+    because the rule says *source* files (docs, helm and k8s do not count).
+    """
+    if paths is None:
+        return                       # no --base: no diff to count. Same graceful degradation as
+                                     # the area-token check, which also silently skips without it.
+    count = sum(1 for p in paths if SOURCE_PATH.search(p))
+
+    m = re.search(r"\d+", rep["Files-edited"])
+    if m and count and abs(int(m.group()) - count) > 0.2 * count:
+        print(f"::warning:: Files-edited says {m.group()} but the diff changes {count} source "
+              "file(s). An agent that has lost track of the size of its own diff has usually lost "
+              "track of more than that (ai/CAPACITY.md)")
+
+    unresumable = rep["Checkpoint"].strip().lower() in {"n/a", "", "none"}
+    if count > SOURCE_FILE_BUDGET and status != "FAILED" and unresumable:
+        die(f"{count} source files changed, over the {SOURCE_FILE_BUDGET}-file budget in "
+            f"ai/CAPACITY.md, with Status {status} and no Checkpoint. Split the task into ordered "
+            "sub-tasks each with its own report, or report `Status: FAILED` / "
+            "`Reason: scope-too-large` with the split you propose.")
+
+
 def main():
     args = sys.argv[1:]
     body_file = args[args.index("--pr-body-file") + 1] if "--pr-body-file" in args else None
@@ -123,6 +159,12 @@ def main():
         die(f"Status must be OK | DEGRADED | FAILED, got {rep['Status']!r}")
     if reason not in REASONS:
         die(f"Reason {rep['Reason']!r} is not one of {sorted(REASONS)}")
+
+    # One git call, shared by the budget check and the area tokens below.
+    paths = changed_paths(base) if base else None
+
+    # ---- Budget (ai/CAPACITY.md) -------------------------------------------------------------
+    check_budget(rep, status, paths)
 
     # ---- FAILED: the designed outcome for "LLM cannot handle this" ---------------------------
     if status == "FAILED":
@@ -195,8 +237,7 @@ def main():
 
     data = yaml.safe_load(open(MAP, encoding="utf-8"))
     required = set(data.get("always_required", []))
-    if base:
-        paths = changed_paths(base)
+    if paths is not None:
         for rule in data["rules"]:
             # Any non-path scope (content, enforcement) is triggered by diff *content*, not by
             # file paths, and is evaluated in check-docs-impact. Skipping them generically also
