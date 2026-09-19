@@ -22,6 +22,13 @@ import sys
 
 import yaml
 
+# The messages below contain "→" and "⇒", which cp1252 cannot encode — on a Windows console the
+# INSTRUCTION-RETENTION-FAILURE report died mid-print with a UnicodeEncodeError, turning its
+# deliberate exit 4 into an exit 1 traceback. The strongest check in the template must not be the
+# one that crashes when someone runs it locally.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # The repo under inspection is the CWD when it differs from the script's own repo —
 # eval/run.sh invokes these from a worktree of a *different* repository, and anchoring
 # to __file__ made every check diff the template instead, silently reporting pass.
@@ -70,7 +77,9 @@ def load_tokens():
     for path in glob.glob(os.path.join(ROOT, "ai", "**", "*.md"), recursive=True):
         m = TOKEN_LINE.search(open(path, encoding="utf-8", errors="replace").read())
         if m:
-            tokens[os.path.relpath(path, ROOT)] = m.group(1)
+            # POSIX separators: impact-map.yaml spells its `requires` paths with "/", and on
+            # Windows relpath would yield "ai\skills\..." — every lookup below would miss.
+            tokens[os.path.relpath(path, ROOT).replace(os.sep, "/")] = m.group(1)
     return tokens
 
 

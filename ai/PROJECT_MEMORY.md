@@ -43,6 +43,10 @@ Small decisions that don't warrant a full ADR. Format: `YYYY-MM-DD — decision 
 
 ## Environment Quirks
 
+- **`scripts/check-ai-report.py` on a Windows console**: its output contains `→`, which cp1252
+  cannot encode — the INSTRUCTION-RETENTION-FAILURE branch used to die mid-print and return exit 1
+  instead of its deliberate exit 4. The script now reconfigures stdout to UTF-8; keep that if you
+  touch the top of the file, or the strongest check in the template silently reports the wrong code.
 - **Skills discovery**: opencode reads them via the `skills` array in `opencode.json`, which points
   at `ai/skills`. Skills live only in `ai/skills/` — there is no duplicated copy anywhere,
   deliberately (one authoritative source). No symlinks are used (they're unreliable on Windows
