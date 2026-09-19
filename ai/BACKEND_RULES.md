@@ -95,6 +95,11 @@
 - Externalize configuration (application yaml / properties)
 - No secrets hardcoded in source
 - Environment-specific values via profiles or environment overrides
+- A business-defined numeric constant that does not already exist in the codebase — a fee, rate,
+  percentage, limit or threshold — is externalized with **no default**:
+  `${billing.return-fee}`, never `${billing.return-fee:25.00}`. A default value is an invented
+  business fact wearing configuration clothes. Report it under `Needs-human` in the AI Run Report,
+  and if it is a domain condition it also needs a `BR-nnn` (`docs/business/rules.md`).
 
 # Testing
 
