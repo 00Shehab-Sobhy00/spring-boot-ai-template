@@ -34,7 +34,9 @@ Read before you plan; a plan built on assumptions produces work that has to be r
 
 Before planning, count. This is where most silent failures are decided.
 
-- Files you will edit, services you will touch, rule/skill/pattern files you will need.
+- Files you will edit, services you will touch, rule/skill/pattern files you will need. If
+  `graphify-out/` exists, `graphify affected "<class or file>"` gives the blast radius to count
+  from (`ai/AI_BEHAVIOR.md` → Repo Map) — then confirm it by reading the files.
 - Over the budget in `ai/CAPACITY.md` (12 files / 3 services / 6 rule files)? Propose the split
   and stop, or declare `FAILED / scope-too-large`. Do not "try anyway".
 - Open a **checkpoint** block now and update it after every step below. If, at any update, you

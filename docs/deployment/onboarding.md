@@ -34,7 +34,25 @@ Verify: `curl localhost:8080/actuator/health` returns UP.
 mvn verify                      # unit + integration (Testcontainers needs Docker running)
 ```
 
-## 5. Read These, In This Order
+## 5. Set Up the AI Tools and Map the Repo (once per clone)
+
+```bash
+pip install graphifyy               # optional — the repo map; CLI is `graphify`
+scripts/setup-agent-tools.sh        # Windows: powershell -File scripts\setup-agent-tools.ps1
+```
+
+The setup script gives every AI tool (Claude Code, opencode, Cursor, Copilot) the same skills, and,
+if graphify is installed, adds its `/graphify` skill (user-level) and git hooks that rebuild the
+code part of the map on commit/checkout, with no LLM. Re-running it is safe.
+
+Then, inside the assistant, run `/graphify .` once. It maps the code (AST, free and deterministic)
+and the docs you have added (a model pass, cached afterwards) into `graphify-out/`:
+`graph.html` (open it in a browser), `GRAPH_REPORT.md`, `graph.json`. The output is git-ignored.
+After that the hooks keep the code part current; run `/graphify . --update` when you add or change
+docs. Do not run `graphify claude install`: it writes into `CLAUDE.md`/`AGENTS.md`, and adapters
+only point at `ai/` (`AGENTS.md` → Tool Adapters).
+
+## 6. Read These, In This Order
 
 1. `docs/business/business-overview.md` — what the product does and why
 2. `ai/ARCHITECTURE.md` — layering and service boundaries
@@ -42,14 +60,14 @@ mvn verify                      # unit + integration (Testcontainers needs Docke
 4. `ai/PROJECT_MEMORY.md` — the gotchas you'd otherwise learn the hard way
 5. `ai/BACKEND_RULES.md` — the conventions your first PR will be reviewed against
 
-## 6. Working With the AI Assistant
+## 7. Working With the AI Assistant
 
-This repo is wired for **opencode** via `opencode.json` — it loads the rule files (`AGENTS.md` +
-`ai/*.md`) as instructions and discovers every skill under `ai/skills` automatically. Just start
-opencode in the repo root; no extra flags needed. Before a common task, ask for the relevant
+This repo is wired for **opencode, Claude Code, Cursor, and Copilot** — each loads the same rule
+files, the same skills, and the same end-of-task hook (`AGENTS.md` → Tool Adapters). After step 5,
+just start your tool in the repo root; no extra flags needed. Before a common task, ask for the relevant
 skill — e.g. "add an endpoint" loads the REST recipe automatically.
 
-## 7. Your First Change
+## 8. Your First Change
 
 Pick something small. Open a PR. The PR template's checklist is the same one reviewers use —
 read it before you start, not after.

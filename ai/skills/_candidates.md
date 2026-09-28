@@ -35,6 +35,8 @@ the skill automatically — it means raise it, and a human decides.
 | --- | --- | --- | --- | --- |
 | *example: adding a scheduled cleanup job* | 2 | 2024-03-01 | no | *both times we got the batching wrong the first try* |
 | Closing a gap between a stated rule and its CI check | 1 | 2026-09-19 | no | the rule existed in `ai/CAPACITY.md`; the script parsed the field and never used it |
+| Enforcing one behavior across every tool adapter | 1 | 2026-09-28 | no | one script + one thin hook file per tool; the script's own state file is the loop guard, so adapters stay dumb |
+| Wiring an optional external tool into the agent workflow | 1 | 2026-09-28 | no | graphify: kept optional (no CI gate, no adapter edits); `graphify claude install` would have written into `CLAUDE.md` |
 
 ## Promoted (became skills)
 

@@ -10,7 +10,7 @@
     "ai/REVIEW.md",
     "ai/PROJECT_MEMORY.md"
   ],
-  "skills": [
-    "./ai/skills"
-  ]
+  "skills": {
+    "paths": ["ai/skills"]
+  }
 }

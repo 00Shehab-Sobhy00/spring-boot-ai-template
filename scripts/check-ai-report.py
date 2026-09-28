@@ -15,9 +15,11 @@ What this catches, in order of how often it fires:
   * Over-citation → a skill cited for an area the diff does not touch. Warning (see
     check_over_citation for why it is not yet a failure).
 
-Usage: scripts/check-ai-report.py --pr-body-file FILE --base <ref> [--no-diff]
-       (without --base there is no diff: area-specific tokens, the file budget and the
-        over-citation check are all skipped; always_required tokens are still enforced)
+Usage: scripts/check-ai-report.py --pr-body-file FILE [--base <ref>] [--no-diff]
+       --base defaults to origin/main when that ref exists — changes are judged against main.
+       With --no-diff, or when no base resolves, there is no diff: area-specific tokens, the
+       file budget and the over-citation check are all skipped; always_required tokens are
+       still enforced.
 """
 import glob
 import os
@@ -177,7 +179,10 @@ def check_over_citation(rep, data, by_token, paths):
 def main():
     args = sys.argv[1:]
     body_file = args[args.index("--pr-body-file") + 1] if "--pr-body-file" in args else None
-    base = args[args.index("--base") + 1] if "--base" in args else None
+    base = args[args.index("--base") + 1] if "--base" in args else "origin/main"
+    if "--no-diff" in args or subprocess.run(["git", "rev-parse", "--verify", "-q", base],
+                                             capture_output=True).returncode:
+        base = None
     body = open(body_file, encoding="utf-8").read() if body_file and os.path.exists(body_file) else ""
 
     rep = parse_report(body)

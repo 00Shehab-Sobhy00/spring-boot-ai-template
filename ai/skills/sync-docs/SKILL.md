@@ -21,13 +21,15 @@ Follows `AGENTS.md` (single-source rule), `ai/AI_BEHAVIOR.md` (Recording New Kno
 
 ## Steps
 
-1. **Enumerate what changed.** Use the diff (`git diff --name-only <base>` or the files you
-   touched this session). Classify each file by the *kind* of change using the impact table.
+1. **Enumerate what changed.** Use the diff against main (`git fetch origin main`, then
+   `git diff --name-only origin/main...HEAD`) plus any uncommitted files you touched this session. Classify each file by the *kind* of change using the impact table.
 2. **Generated first, hand-written second.** If a target doc is generated (see
    `docs/GENERATED.md`), do not edit it by hand — run or mention the generator. Only edit the
    hand-written columns/sections (owner, retention rationale, business meaning).
 3. **Apply the impact table.** For each row that matches, open the target doc and make the
    smallest correct edit. Match the existing format of the table/section — don't restructure.
+   If you changed any doc and `graphify-out/` exists, run `/graphify . --update` so the repo map
+   picks it up (only the changed files are re-read). No `graphify-out/` → skip, never fail on it.
 4. **Business meaning check.** For any new `if`/validation/threshold on a *domain* field, ask:
    is this a business rule? If yes, it gets a `BR-nnn` id in `docs/business/rules.md` and a
    `// BR-nnn` comment on the condition and its test (see that file for the convention). If

@@ -12,7 +12,8 @@ Override for genuinely doc-neutral PRs: a line in the PR body
     Docs-Impact: none — <reason>
 skips levels 1–3 but is echoed in the log so the reviewer sees it.
 
-Usage: scripts/check-docs-impact.py <base-ref> [--warn] [--pr-body-file FILE]
+Usage: scripts/check-docs-impact.py [<base-ref>] [--warn] [--pr-body-file FILE]
+       <base-ref> defaults to origin/main — changes are always judged against main.
 Exit 1 on any `error` rule failing (unless --warn).
 """
 import os
@@ -26,6 +27,7 @@ import yaml
 # eval/run.sh invokes these from a worktree of a *different* repository, and anchoring
 # to __file__ made every check diff the template instead, silently reporting pass.
 # MAP/token lookups still resolve against the script's own tree via TEMPLATE_ROOT.
+DEFAULT_BASE = "origin/main"
 TEMPLATE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
@@ -120,10 +122,13 @@ def disturbed_rules(base):
 
 
 def main():
-    if len(sys.argv) < 2:
+    positional = [a for i, a in enumerate(sys.argv[1:], 1)
+                  if not a.startswith("--") and sys.argv[i - 1] != "--pr-body-file"]
+    base = positional[0] if positional else DEFAULT_BASE
+    if subprocess.run(["git", "rev-parse", "--verify", "-q", base], capture_output=True).returncode:
+        print(f"Base ref {base!r} not found — run `git fetch origin main` or pass a base ref.")
         print(__doc__)
         sys.exit(2)
-    base = sys.argv[1]
     warn_only = "--warn" in sys.argv
     body = ""
     if "--pr-body-file" in sys.argv:

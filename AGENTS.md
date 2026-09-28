@@ -194,14 +194,23 @@ grouped skills above do.
 All rules live under `ai/`. Each tool gets a thin adapter that only *points* at them, so a rule is
 edited once and every tool follows it:
 
-| Tool | Adapter | Notes |
-| --- | --- | --- |
-| opencode | `opencode.json` | `instructions[]` lists the rule files explicitly (opencode doesn't follow `@`-imports); `skills[]` → `ai/skills` |
-| Claude Code | `CLAUDE.md` | `@`-imports the same files; skills via a local, git-ignored `.claude/skills → ai/skills` symlink (see the file) |
-| Cursor | `.cursor/rules/project.mdc` | `alwaysApply`, `@`-imports the same files |
-| Copilot | `.github/copilot-instructions.md` | plain pointers |
+| Tool | Rules | Skills (`ai/skills`) | End-of-task hook |
+| --- | --- | --- | --- |
+| opencode | `opencode.json` → `instructions[]` (it doesn't follow `@`-imports) | `opencode.json` → `skills.paths` | `.opencode/plugins/end-of-task.js` (`session.idle`) |
+| Claude Code | `CLAUDE.md` → `@`-imports | `.claude/skills` link | `.claude/settings.json` (`Stop`) |
+| Cursor | `.cursor/rules/project.mdc` → `alwaysApply` + `@`-imports | `.agents/skills` link | `.cursor/hooks.json` (`stop`) |
+| Copilot | `.github/copilot-instructions.md` → plain pointers | `.agents/skills` link | `.github/hooks/end-of-task.json` (`agentStop`) |
+
+Every tool gets the same three things: the same rule files, the same skills, the same end-of-task
+hook. The two skill links are git-ignored and created once per clone by
+`scripts/setup-agent-tools.sh` (`.ps1` on Windows — junctions, no Developer Mode needed).
 
 Adding another tool = one more adapter row. Never copy rule text into an adapter.
+
+Every end-of-task hook calls the same `scripts/end-of-task-check.py`, which reads
+`ai/impact-map.yaml`: if code changed in a documented area and its docs did not, it sends the agent
+back once to run `ai/skills/sync-docs/`. It is a nudge, not a gate — the gate is CI
+(`scripts/check-docs-impact.py`). A new hook = one adapter file calling that script.
 
 # What CI Enforces
 

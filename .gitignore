@@ -10,3 +10,5 @@ hs_err_pid*
 .claude/skills
 .ai-run/
 eval/runs/
+graphify-out/
+.agents/skills
