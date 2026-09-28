@@ -64,8 +64,8 @@ only point at `ai/` (`AGENTS.md` → Tool Adapters).
 
 This repo is wired for **opencode, Claude Code, Cursor, and Copilot** — each loads the same rule
 files, the same skills, and the same end-of-task hook (`AGENTS.md` → Tool Adapters). After step 5,
-just start your tool in the repo root; no extra flags needed. Before a common task, ask for the relevant
-skill — e.g. "add an endpoint" loads the REST recipe automatically.
+just start your tool in the repo root; no extra flags needed. Before a common task, ask for the
+relevant skill — e.g. "add an endpoint" loads the REST recipe automatically.
 
 ## 8. Your First Change
 

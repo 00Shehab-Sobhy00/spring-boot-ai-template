@@ -22,7 +22,8 @@ Follows `AGENTS.md` (single-source rule), `ai/AI_BEHAVIOR.md` (Recording New Kno
 ## Steps
 
 1. **Enumerate what changed.** Use the diff against main (`git fetch origin main`, then
-   `git diff --name-only origin/main...HEAD`) plus any uncommitted files you touched this session. Classify each file by the *kind* of change using the impact table.
+   `git diff --name-only origin/main...HEAD`) plus any uncommitted files you touched this
+   session. Classify each file by the *kind* of change using the impact table.
 2. **Generated first, hand-written second.** If a target doc is generated (see
    `docs/GENERATED.md`), do not edit it by hand — run or mention the generator. Only edit the
    hand-written columns/sections (owner, retention rationale, business meaning).
