@@ -42,7 +42,7 @@ def _repo_under_inspection():
         return os.path.abspath(override)
     try:
         top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
-                             text=True, check=False).stdout.strip()
+                             text=True, encoding="utf-8", errors="replace", check=False).stdout.strip()
         return top or TEMPLATE_ROOT
     except OSError:
         return TEMPLATE_ROOT
@@ -55,7 +55,7 @@ PLACEHOLDER = re.compile(r"^\s*(<!--.*-->|\|\s*(-|\s)*\|.*|TODO|tbd|n/a)\s*$", r
 
 
 def sh(*args):
-    return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, check=False).stdout
+    return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).stdout
 
 
 def added_lines(base, path_regex=None):

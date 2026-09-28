@@ -2,7 +2,11 @@
 # Every job is blocking. If you need to loosen one, do it with a PR that says why.
 name: template-checks
 on:
+  # `edited`: the checks read the PR body (the AI Run Report, Accepted-Degraded / Accepted-Risk,
+  # Docs-Impact). Without it, editing the description never re-ran them, and a manual re-run replays
+  # the original event — the body as it was when the PR was opened.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -37,15 +41,22 @@ jobs:
   docs-impact:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read       # to read the live PR body
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install pyyaml
+      # The body is fetched live, not taken from the event payload: a re-run replays the payload,
+      # so it would keep checking the description as it was when the run was first triggered.
       - name: Save PR body
-        env: { PR_BODY: "${{ github.event.pull_request.body }}" }
-        run: printf '%s' "$PR_BODY" > /tmp/pr-body.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
+        run: gh api "$PR_URL" --jq '.body // ""' > /tmp/pr-body.md
       - name: Code changed in a documented area must update its docs (substantively)
         run: python3 scripts/check-docs-impact.py origin/${{ github.base_ref }} --pr-body-file /tmp/pr-body.md
       # Invoked through `bash` on purpose: the exec bit is set in the index, but this template is
@@ -74,9 +85,13 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install pyyaml
+      # The body is fetched live, not taken from the event payload: a re-run replays the payload,
+      # so it would keep checking the description as it was when the run was first triggered.
       - name: Save PR body
-        env: { PR_BODY: "${{ github.event.pull_request.body }}" }
-        run: printf '%s' "$PR_BODY" > /tmp/pr-body.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
+        run: gh api "$PR_URL" --jq '.body // ""' > /tmp/pr-body.md
       - name: Parse and enforce the AI Run Report
         id: report
         run: python3 scripts/check-ai-report.py --pr-body-file /tmp/pr-body.md --base origin/${{ github.base_ref }}

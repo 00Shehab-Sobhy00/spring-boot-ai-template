@@ -24,6 +24,9 @@ delete this file when everything is done.
 | `enforcement/archunit/ArchitectureRulesTest.java` | copy into each service, set `BASE_PACKAGE`, uncomment the `architecture` CI job | ☐ |
 | `eval/` | run once per model you intend to use; record `not-capable` tasks in `ai/PROJECT_MEMORY.md` | ☐ |
 | GitHub labels `ai:ok`, `ai:needs-attention` | create them so the `ai-run-report` job can label PRs | ☐ |
+| `ai/impact-map.yaml` → `risk` | generic high-risk filename patterns (`Security*`, `*Lock*`, `Payment*`…) — match them to how your services name files | ☐ |
+| `ai/CAPACITY.md` → Budget | 200/400 changed-line thresholds — tune to what your reviewers can review; change `scripts/check-ai-report.py` in the same PR | ☐ |
+| `Accepted-Risk` / `Accepted-Degraded` | only a convention until enforced — require a CODEOWNERS review or branch protection on PRs that carry them | ☐ |
 
 Not personalized = fictional. The agent is told (in `AGENTS.md`) that files with a `<!-- TODO`
 marker are examples, not facts.

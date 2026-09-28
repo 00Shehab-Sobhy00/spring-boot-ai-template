@@ -40,9 +40,29 @@ designed so that **that failure is detected mechanically** rather than assumed a
 
 These are not suggestions; they are the point at which your output quality is known to degrade.
 
-- **> 12 source files to edit** in one task → split into ordered sub-tasks, each with its own report,
-  or declare `FAILED / scope-too-large` and propose the split.
-- **> 3 services touched** → stop and ask (`AGENTS.md` → "Ask before cross-cutting refactors").
+**Decide by risk, not by size.** A rename across 15 files is safe; a lock plus a migration in 3
+files is not. Before you start, stop and ask if any of these holds:
+
+- **> 1 public contract changes** (API, event/topic, DB schema) — each needs its own compatibility
+  and deploy-order decision.
+- **Two high-risk areas together** — migration, concurrency/locking, security, money.
+- **> 3 services touched** (`AGENTS.md` → "Ask before cross-cutting refactors").
+- **A part you cannot verify** — no test or command would prove it works.
+
+Otherwise, split the work into **vertical slices**, each verifiable on its own (a test proves it),
+in dependency order. Prefer one slice per PR. If slices ship in one PR, the `Checkpoint` lists
+them, each with what verified it.
+
+**CI backstop — risk.** `ai/impact-map.yaml` → `risk` detects the same from changed paths: two
+contracts, two high-risk areas, or one in a change over 200 lines fails the PR until a human adds
+`Accepted-Risk: <reason>`. Never write that line yourself.
+
+**CI backstop — size** (changed lines in `src/main/`; tests never count): **> 200** warns;
+**> 400** fails unless split, listed as slices in `Checkpoint`, or `FAILED / scope-too-large`.
+Tune both numbers here and in `scripts/check-ai-report.py` together.
+
+**Context:**
+
 - **> 6 rule/skill/pattern files needed** for one task → write a checkpoint (below) before file 4.
 - **Any rule file you cannot summarize in two lines from memory right now** → re-read it before
   continuing. If re-reading would push out something else you still need → `FAILED /
@@ -52,7 +72,7 @@ These are not suggestions; they are the point at which your output quality is kn
 
 For any task run through `ai/skills/deliver-feature/`, keep a running checkpoint in your response
 (or, if the tool supports files, in `.ai-run/checkpoint.md`, git-ignored). Update it after every
-step of the skill:
+step of the skill. The format:
 
 ```text
 CHECKPOINT
@@ -63,6 +83,10 @@ Files done: OrderController.java, OrderCancelRequest.java
 Files pending: OrderService.java, OrderControllerTest.java, docs/api/error-catalog.md
 Unverified so far: none
 ```
+
+**One slice, one fresh context.** Quality drops long before the window is full. After a slice is
+verified and committed, write `.ai-run/checkpoint.md` and start the next slice from a fresh
+context that reads it first.
 
 If, when you go to update the checkpoint, you cannot reconstruct a "Decisions locked" line you
 wrote earlier — that is the signal. Stop. Status `FAILED / context-overflow`. Report what is done,
@@ -80,10 +104,10 @@ in verbatim as if it were a second, independent one.
 
 **Budget crosses the boundary asymmetrically:**
 
-- Files the subagent *read* while exploring do **not** count against the caller's file/service/
+- Files the subagent *read* while exploring do **not** count against the caller's service/
   rule-file budget in the section above — that avoided cost is the entire point of delegating.
 - Files the subagent *edited* count exactly like files you edited yourself, in `Files-edited` and
-  in the 12-file ceiling for the task as a whole.
+  in the changed-line backstop for the task as a whole.
 
 **Folding the subagent's outcome into your own report:**
 

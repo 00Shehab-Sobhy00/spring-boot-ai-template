@@ -34,11 +34,14 @@ Read before you plan; a plan built on assumptions produces work that has to be r
 
 Before planning, count. This is where most silent failures are decided.
 
-- Files you will edit, services you will touch, rule/skill/pattern files you will need. If
-  `graphify-out/` exists, `graphify affected "<class or file>"` gives the blast radius to count
+- Find what the task touches: files, services, public contracts, rule/skill/pattern files. If
+  `graphify-out/` exists, `graphify affected "<class or file>"` gives the blast radius to start
   from (`ai/AI_BEHAVIOR.md` → Repo Map) — then confirm it by reading the files.
-- Over the budget in `ai/CAPACITY.md` (12 files / 3 services / 6 rule files)? Propose the split
-  and stop, or declare `FAILED / scope-too-large`. Do not "try anyway".
+- Run the risk questions in `ai/CAPACITY.md` → Budget (contracts, high-risk areas, services,
+  verifiability). Any hit → propose the split and stop, or declare `FAILED / scope-too-large`.
+  Do not "try anyway".
+- Otherwise split into vertical slices, each with the test that proves it, and put them in the
+  checkpoint. Expect more than ~400 changed lines in `src/main/` → one PR per slice.
 - Open a **checkpoint** block now and update it after every step below. If, at any update, you
   cannot reconstruct a decision you locked earlier — that is context loss; stop with
   `FAILED / context-overflow` and hand over the checkpoint.
@@ -75,6 +78,9 @@ Order matters: the data shape constrains the contract, and the contract constrai
    than one replica (`ai/TESTING.md`).
 5. **Reconcile.** If steps touched adjacent files or overlapping behavior, read the combined result
    as one change, not as separate edits. This is where inconsistencies actually surface.
+
+**Between slices:** verify and commit the slice, write `.ai-run/checkpoint.md`, then continue the
+next slice from a fresh context that reads it (`ai/CAPACITY.md` → "One slice, one fresh context").
 
 ## Step 3 — Verify narrowly, then broaden
 

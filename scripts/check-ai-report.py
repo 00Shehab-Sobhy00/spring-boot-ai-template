@@ -10,8 +10,12 @@ What this catches, in order of how often it fires:
     Most likely cause: never read, or fell out of the context window. Reported as
     `instruction-retention-failure` so it is distinguishable from an ordinary rule violation.
   * Unknown tokens → cited but present in no file ⇒ fabricated. Hard fail.
-  * Over budget → more source files changed than ai/CAPACITY.md allows in one task, without a
-    FAILED status or a resumable checkpoint. Hard fail.
+  * Over budget → more changed lines in src/main than ai/CAPACITY.md allows in one PR, without a
+    FAILED status or a checkpoint listing the slices. Hard fail (warning from half the budget).
+    Tests do not count.
+  * Risk → the changed paths hit the risk triggers in ai/impact-map.yaml → risk (stacked
+    contracts, stacked high-risk areas, or one high-risk area in a large change) and no human
+    wrote `Accepted-Risk: <reason>` in the PR body. Hard fail.
   * Over-citation → a skill cited for an area the diff does not touch. Warning (see
     check_over_citation for why it is not yet a failure).
 
@@ -54,7 +58,7 @@ def _repo_under_inspection():
         return os.path.abspath(override)
     try:
         top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
-                             text=True, check=False).stdout.strip()
+                             text=True, encoding="utf-8", errors="replace", check=False).stdout.strip()
         return top or TEMPLATE_ROOT
     except OSError:
         return TEMPLATE_ROOT
@@ -68,11 +72,13 @@ REQUIRED = ["Status", "Reason", "Model", "Task-shape", "Rules-read", "Skills-app
             "Patterns-applied", "Files-edited", "Verified", "Unverified", "Assumptions",
             "Needs-human", "Checkpoint"]
 CANARY = "CANARY-7QW3ZP"
-# ai/CAPACITY.md → Budget: "> 12 source files to edit in one task → split into ordered sub-tasks
-# ... or declare FAILED / scope-too-large". Mirrored here because the rule text cannot be parsed;
-# change one and change the other, or the budget and its enforcement drift apart silently.
-SOURCE_FILE_BUDGET = 12
-SOURCE_PATH = re.compile(r"(^|/)src/(main|test)/")
+# ai/CAPACITY.md → Budget → CI backstop: "> 400 changed lines in src/main/ in one PR → split, carry
+# a Checkpoint listing the slices, or FAILED / scope-too-large". Mirrored here because the rule text
+# cannot be parsed; change one and change the other, or the budget and its enforcement drift apart.
+CHANGED_LINE_BUDGET = 400
+CHANGED_LINE_WARN = 200                              # Google/SmartBear: review quality drops past it
+SOURCE_PATH = re.compile(r"(^|/)src/(main|test)/")   # Files-edited cross-check: code + tests
+BUDGET_PATH = re.compile(r"(^|/)src/main/")          # budget: tests never push a task over
 REASONS = {"none", "context-overflow", "contradictory-rules", "missing-business-rule",
            "rule-ownership-conflict",
            "unverifiable", "scope-too-large", "tooling", "instructions-ambiguous"}
@@ -96,32 +102,61 @@ def load_tokens():
 
 
 def parse_report(body):
-    m = re.search(r"### AI Run Report\s*\n(.*?)(?:\n###|\Z)", body, re.S)
-    if not m:
+    """The last `### AI Run Report` block with a Status wins.
+
+    Pasting a filled report under the PR template's own heading leaves the template's blank block
+    (`Status:` with nothing after it) in the body too. Taking the first block then read Status as
+    '' and failed with a message that pointed nowhere near the cause.
+    """
+    blocks = []
+    for m in re.finditer(r"### AI Run Report[^\n]*\n(.*?)(?=\n###|\Z)", body, re.S):
+        rep = {}
+        for line in m.group(1).splitlines():
+            line = line.strip().strip("`")
+            if ":" in line and not line.startswith("<!--"):
+                k, v = line.split(":", 1)
+                rep[k.strip()] = v.strip()
+        if rep:
+            blocks.append(rep)
+    if not blocks:
         return None
-    rep = {}
-    for line in m.group(1).splitlines():
-        line = line.strip().strip("`")
-        if ":" in line and not line.startswith("<!--"):
-            k, v = line.split(":", 1)
-            rep[k.strip()] = v.strip()
-    return rep
+    filled = [b for b in blocks if b.get("Status")]
+    if len(filled) > 1:
+        print(f"::warning:: {len(filled)} filled `### AI Run Report` blocks — using the last one. "
+              "Keep exactly one.")
+    return (filled or blocks)[-1]
 
 
 def changed_paths(base):
     out = subprocess.run(["git", "diff", "--name-only", f"{base}...HEAD"], cwd=ROOT,
-                         capture_output=True, text=True, check=False).stdout
+                         capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).stdout
     return out.split()
 
 
-def check_budget(rep, status, paths):
-    """ai/CAPACITY.md → Budget: more than SOURCE_FILE_BUDGET source files in one task must be
-    split, or reported as FAILED / scope-too-large with a resumable checkpoint.
+def changed_lines(base):
+    """Added + deleted lines in src/main, from the same base...HEAD diff as changed_paths."""
+    out = subprocess.run(["git", "diff", "--numstat", f"{base}...HEAD"], cwd=ROOT,
+                         capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).stdout
+    total = 0
+    for line in out.splitlines():
+        added, deleted, path = line.split("	", 2)
+        if BUDGET_PATH.search(path) and added != "-":      # "-" = binary file, no line count
+            total += int(added) + int(deleted)
+    return total
 
-    `Files-edited` was required by the report format, parsed, and then never used — so the budget
-    was stated but never enforced, and runs editing 30-50 files reported a passing status. Counted
-    against the real diff rather than the self-report, and restricted to src/main + src/test
-    because the rule says *source* files (docs, helm and k8s do not count).
+
+def check_budget(rep, status, paths, lines):
+    """ai/CAPACITY.md → Budget: more than CHANGED_LINE_BUDGET changed lines in src/main in one PR
+    must be split, carry a Checkpoint listing the slices, or be reported as FAILED /
+    scope-too-large.
+
+    Lines, not files: a rename across 15 files is small and safe; the old 12-file budget stopped it
+    while letting a 3-file lock + migration through. src/main only: counting tests made writing
+    them push a task over budget.
+
+    Counted against the real diff, never the self-report: runs editing 30-50 files once reported a
+    passing status. `Files-edited` is still cross-checked (src/main + src/test file count) as a
+    warning — an agent that misreports the size of its own diff has lost track of more than that.
     """
     if paths is None:
         return                       # no --base: no diff to count. Same graceful degradation as
@@ -135,11 +170,58 @@ def check_budget(rep, status, paths):
               "track of more than that (ai/CAPACITY.md)")
 
     unresumable = rep["Checkpoint"].strip().lower() in {"n/a", "", "none"}
-    if count > SOURCE_FILE_BUDGET and status != "FAILED" and unresumable:
-        die(f"{count} source files changed, over the {SOURCE_FILE_BUDGET}-file budget in "
-            f"ai/CAPACITY.md, with Status {status} and no Checkpoint. Split the task into ordered "
-            "sub-tasks each with its own report, or report `Status: FAILED` / "
+    if CHANGED_LINE_WARN < lines <= CHANGED_LINE_BUDGET:
+        print(f"::warning:: {lines} changed lines in src/main — past the {CHANGED_LINE_WARN}-line "
+              f"mark where review starts missing defects; the hard limit is {CHANGED_LINE_BUDGET} "
+              "(ai/CAPACITY.md). Is there a slice that could ship on its own?")
+    if lines > CHANGED_LINE_BUDGET and status != "FAILED" and unresumable:
+        die(f"{lines} changed lines in src/main, over the {CHANGED_LINE_BUDGET}-line budget in "
+            f"ai/CAPACITY.md, with Status {status} and no Checkpoint. Split into slices (one PR "
+            "each), list the slices in `Checkpoint`, or report `Status: FAILED` / "
             "`Reason: scope-too-large` with the split you propose.")
+
+
+def check_risk(data, paths, lines, body):
+    """ai/impact-map.yaml → risk: detect stacked risk from paths alone, so this part of
+    ai/CAPACITY.md → Budget does not rest on the agent's own answers.
+
+    Size does not predict risk; path signals do part of the job (the static-heuristics layer of
+    risk-tiered review, e.g. Meta's RADAR). Tripping a trigger is not an error in the change — it
+    is a PR that must not merge without a human saying they looked: `Accepted-Risk: <reason>`.
+    """
+    risk = data.get("risk")
+    if paths is None or not risk:
+        return
+    rules = {r["id"]: r for r in data["rules"]}
+
+    def hit(entries):
+        found = []
+        for e in entries:
+            pattern = rules[e["rule"]]["code"] if "rule" in e else e["code"]
+            if any(re.search(pattern, p) for p in paths):
+                found.append(e["id"])
+        return found
+
+    contracts, high = hit(risk.get("contracts", [])), hit(risk.get("high_risk", []))
+    single_limit = risk.get("single_risk_lines", CHANGED_LINE_WARN)
+    reasons = []
+    if len(contracts) >= 2:
+        reasons.append(f"{len(contracts)} public contracts change together ({', '.join(contracts)})")
+    if len(high) >= 2:
+        reasons.append(f"{len(high)} high-risk areas together ({', '.join(high)})")
+    if len(high) == 1 and lines > single_limit:
+        reasons.append(f"high-risk area `{high[0]}` in a {lines}-line change (> {single_limit})")
+    if contracts or high:
+        print(f"::notice:: risk signals — contracts: {contracts or 'none'}, "
+              f"high-risk: {high or 'none'}")
+    if not reasons:
+        return
+    acc = re.search(r"^Accepted-Risk:\s*(.+)$", body, re.M)
+    if not acc:
+        die("High-risk change: " + "; ".join(reasons) + ". Split it into slices that each carry "
+            "one risk (ai/CAPACITY.md → Budget), or a human reviewer adds "
+            "`Accepted-Risk: <reason>` to the PR body after reviewing it as such.")
+    print(f"::notice:: high risk accepted by a human: {acc.group(1).strip()}")
 
 
 def check_over_citation(rep, data, by_token, paths):
@@ -194,6 +276,9 @@ def main():
     if missing:
         die(f"AI Run Report is missing fields: {missing} — format is in ai/CAPACITY.md")
 
+    if not rep["Status"]:
+        die("`Status:` is empty. The PR template's blank `### AI Run Report` block is probably "
+            "still in the body — replace it with your filled report, keeping exactly one block.")
     status = rep["Status"].upper()
     reason = rep["Reason"].lower()
     if status not in {"OK", "DEGRADED", "FAILED"}:
@@ -203,9 +288,11 @@ def main():
 
     # One git call, shared by the budget check, the over-citation check and the area tokens.
     paths = changed_paths(base) if base else None
+    lines = changed_lines(base) if base else 0
 
-    # ---- Budget (ai/CAPACITY.md) -------------------------------------------------------------
-    check_budget(rep, status, paths)
+    # ---- Budget and risk (ai/CAPACITY.md) ----------------------------------------------------
+    check_budget(rep, status, paths, lines)
+    check_risk(yaml.safe_load(open(MAP, encoding="utf-8")), paths, lines, body)
 
     # ---- FAILED: the designed outcome for "LLM cannot handle this" ---------------------------
     if status == "FAILED":

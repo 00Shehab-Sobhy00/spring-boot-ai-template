@@ -168,6 +168,27 @@ guidance:
       `PROJECT_MEMORY.md` → Deprecated / Do Not Use; deprecation window in `docs/api/conventions.md`
       terms
 
+# Risk tiers, detected from changed paths alone (ai/CAPACITY.md → Budget). Size alone does not
+# predict risk: a 15-file rename is safe, a 3-file lock + migration is not. Consumer:
+# scripts/check-ai-report.py — a PR that trips a trigger needs `Accepted-Risk: <reason>` in its
+# body, written by a human reviewer. `rule:` reuses an area above instead of repeating its regex.
+# The name patterns below are a starting point: tune them to how your services are laid out.
+risk:
+  # Things other people depend on. More than one changing in a PR = compatibility and deploy-order
+  # decisions stacking up.
+  contracts:
+    - {id: api, rule: api}
+    - {id: events, rule: producer}
+    - {id: schema, rule: migration}
+  high_risk:
+    - {id: migration, rule: migration}
+    - {id: security, code: '(Security|Auth|Jwt|OAuth)[^/]*\.java$|/security/'}
+    - {id: concurrency, code: '(Lock|Locking|Idempotency|Idempotent)[^/]*\.java$|/redisson/'}
+    - {id: money, code: '(Payment|Refund|Billing|Invoice|Fee|Pricing)[^/]*\.java$'}
+  # Human acceptance required when any of these holds:
+  #   >= 2 contracts · >= 2 high-risk areas · 1 high-risk area and > single_risk_lines changed in src/main
+  single_risk_lines: 200
+
 # Files whose evidence token is required in EVERY AI Run Report, regardless of area.
 always_required:
   - ai/CAPACITY.md
