@@ -58,7 +58,7 @@ def _repo_under_inspection():
         return os.path.abspath(override)
     try:
         top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
-                             text=True, check=False).stdout.strip()
+                             text=True, encoding="utf-8", errors="replace", check=False).stdout.strip()
         return top or TEMPLATE_ROOT
     except OSError:
         return TEMPLATE_ROOT
@@ -129,14 +129,14 @@ def parse_report(body):
 
 def changed_paths(base):
     out = subprocess.run(["git", "diff", "--name-only", f"{base}...HEAD"], cwd=ROOT,
-                         capture_output=True, text=True, check=False).stdout
+                         capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).stdout
     return out.split()
 
 
 def changed_lines(base):
     """Added + deleted lines in src/main, from the same base...HEAD diff as changed_paths."""
     out = subprocess.run(["git", "diff", "--numstat", f"{base}...HEAD"], cwd=ROOT,
-                         capture_output=True, text=True, check=False).stdout
+                         capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).stdout
     total = 0
     for line in out.splitlines():
         added, deleted, path = line.split("	", 2)
