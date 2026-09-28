@@ -11,7 +11,11 @@ What this catches, in order of how often it fires:
     `instruction-retention-failure` so it is distinguishable from an ordinary rule violation.
   * Unknown tokens → cited but present in no file ⇒ fabricated. Hard fail.
   * Over budget → more changed lines in src/main than ai/CAPACITY.md allows in one PR, without a
-    FAILED status or a checkpoint listing the slices. Hard fail. Tests do not count.
+    FAILED status or a checkpoint listing the slices. Hard fail (warning from half the budget).
+    Tests do not count.
+  * Risk → the changed paths hit the risk triggers in ai/impact-map.yaml → risk (stacked
+    contracts, stacked high-risk areas, or one high-risk area in a large change) and no human
+    wrote `Accepted-Risk: <reason>` in the PR body. Hard fail.
   * Over-citation → a skill cited for an area the diff does not touch. Warning (see
     check_over_citation for why it is not yet a failure).
 
@@ -72,6 +76,7 @@ CANARY = "CANARY-7QW3ZP"
 # a Checkpoint listing the slices, or FAILED / scope-too-large". Mirrored here because the rule text
 # cannot be parsed; change one and change the other, or the budget and its enforcement drift apart.
 CHANGED_LINE_BUDGET = 400
+CHANGED_LINE_WARN = 200                              # Google/SmartBear: review quality drops past it
 SOURCE_PATH = re.compile(r"(^|/)src/(main|test)/")   # Files-edited cross-check: code + tests
 BUDGET_PATH = re.compile(r"(^|/)src/main/")          # budget: tests never push a task over
 REASONS = {"none", "context-overflow", "contradictory-rules", "missing-business-rule",
@@ -152,11 +157,58 @@ def check_budget(rep, status, paths, lines):
               "track of more than that (ai/CAPACITY.md)")
 
     unresumable = rep["Checkpoint"].strip().lower() in {"n/a", "", "none"}
+    if CHANGED_LINE_WARN < lines <= CHANGED_LINE_BUDGET:
+        print(f"::warning:: {lines} changed lines in src/main — past the {CHANGED_LINE_WARN}-line "
+              f"mark where review starts missing defects; the hard limit is {CHANGED_LINE_BUDGET} "
+              "(ai/CAPACITY.md). Is there a slice that could ship on its own?")
     if lines > CHANGED_LINE_BUDGET and status != "FAILED" and unresumable:
         die(f"{lines} changed lines in src/main, over the {CHANGED_LINE_BUDGET}-line budget in "
             f"ai/CAPACITY.md, with Status {status} and no Checkpoint. Split into slices (one PR "
             "each), list the slices in `Checkpoint`, or report `Status: FAILED` / "
             "`Reason: scope-too-large` with the split you propose.")
+
+
+def check_risk(data, paths, lines, body):
+    """ai/impact-map.yaml → risk: detect stacked risk from paths alone, so this part of
+    ai/CAPACITY.md → Budget does not rest on the agent's own answers.
+
+    Size does not predict risk; path signals do part of the job (the static-heuristics layer of
+    risk-tiered review, e.g. Meta's RADAR). Tripping a trigger is not an error in the change — it
+    is a PR that must not merge without a human saying they looked: `Accepted-Risk: <reason>`.
+    """
+    risk = data.get("risk")
+    if paths is None or not risk:
+        return
+    rules = {r["id"]: r for r in data["rules"]}
+
+    def hit(entries):
+        found = []
+        for e in entries:
+            pattern = rules[e["rule"]]["code"] if "rule" in e else e["code"]
+            if any(re.search(pattern, p) for p in paths):
+                found.append(e["id"])
+        return found
+
+    contracts, high = hit(risk.get("contracts", [])), hit(risk.get("high_risk", []))
+    single_limit = risk.get("single_risk_lines", CHANGED_LINE_WARN)
+    reasons = []
+    if len(contracts) >= 2:
+        reasons.append(f"{len(contracts)} public contracts change together ({', '.join(contracts)})")
+    if len(high) >= 2:
+        reasons.append(f"{len(high)} high-risk areas together ({', '.join(high)})")
+    if len(high) == 1 and lines > single_limit:
+        reasons.append(f"high-risk area `{high[0]}` in a {lines}-line change (> {single_limit})")
+    if contracts or high:
+        print(f"::notice:: risk signals — contracts: {contracts or 'none'}, "
+              f"high-risk: {high or 'none'}")
+    if not reasons:
+        return
+    acc = re.search(r"^Accepted-Risk:\s*(.+)$", body, re.M)
+    if not acc:
+        die("High-risk change: " + "; ".join(reasons) + ". Split it into slices that each carry "
+            "one risk (ai/CAPACITY.md → Budget), or a human reviewer adds "
+            "`Accepted-Risk: <reason>` to the PR body after reviewing it as such.")
+    print(f"::notice:: high risk accepted by a human: {acc.group(1).strip()}")
 
 
 def check_over_citation(rep, data, by_token, paths):
@@ -222,8 +274,9 @@ def main():
     paths = changed_paths(base) if base else None
     lines = changed_lines(base) if base else 0
 
-    # ---- Budget (ai/CAPACITY.md) -------------------------------------------------------------
+    # ---- Budget and risk (ai/CAPACITY.md) ----------------------------------------------------
     check_budget(rep, status, paths, lines)
+    check_risk(yaml.safe_load(open(MAP, encoding="utf-8")), paths, lines, body)
 
     # ---- FAILED: the designed outcome for "LLM cannot handle this" ---------------------------
     if status == "FAILED":

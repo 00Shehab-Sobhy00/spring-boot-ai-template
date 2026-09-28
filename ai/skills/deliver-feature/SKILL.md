@@ -79,6 +79,9 @@ Order matters: the data shape constrains the contract, and the contract constrai
 5. **Reconcile.** If steps touched adjacent files or overlapping behavior, read the combined result
    as one change, not as separate edits. This is where inconsistencies actually surface.
 
+**Between slices:** verify and commit the slice, write `.ai-run/checkpoint.md`, then continue the
+next slice from a fresh context that reads it (`ai/CAPACITY.md` → "One slice, one fresh context").
+
 ## Step 3 — Verify narrowly, then broaden
 
 Run the smallest verification that proves the behavior, then widen. Read the *first* meaningful

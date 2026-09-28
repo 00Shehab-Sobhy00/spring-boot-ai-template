@@ -55,6 +55,10 @@ Checkpoint: n/a
 <!-- DEGRADED can only merge with a human's explicit acceptance — uncomment and give the reason: -->
 <!-- Accepted-Degraded: <reason> -->
 
+<!-- CI flags stacked risk from the changed paths (ai/impact-map.yaml → risk). A human reviewer
+     who has reviewed it as such uncomments and gives the reason; the agent never writes it: -->
+<!-- Accepted-Risk: <reason> -->
+
 ## Breaking changes / rollout
 
 <!-- none | describe, with the flag or phased plan (ai/patterns/feature-flags.md) -->

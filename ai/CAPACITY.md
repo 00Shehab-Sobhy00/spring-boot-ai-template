@@ -53,11 +53,13 @@ Otherwise, split the work into **vertical slices**, each verifiable on its own (
 in dependency order. Prefer one slice per PR. If slices ship in one PR, the `Checkpoint` lists
 them, each with what verified it.
 
-**CI backstop — size.** More than **400 changed lines in `src/main/`** in one PR (added + deleted;
-tests do not count, so writing tests never pushes you over) must be split, carry a `Checkpoint`
-listing the slices, or be reported as `FAILED / scope-too-large` with the split you propose. 400 is
-a starting point: tune it to what your reviewers can actually review, in this file and in
-`scripts/check-ai-report.py` together.
+**CI backstop — risk.** `ai/impact-map.yaml` → `risk` detects the same from changed paths: two
+contracts, two high-risk areas, or one in a change over 200 lines fails the PR until a human adds
+`Accepted-Risk: <reason>`. Never write that line yourself.
+
+**CI backstop — size** (changed lines in `src/main/`; tests never count): **> 200** warns;
+**> 400** fails unless split, listed as slices in `Checkpoint`, or `FAILED / scope-too-large`.
+Tune both numbers here and in `scripts/check-ai-report.py` together.
 
 **Context:**
 
@@ -70,7 +72,7 @@ a starting point: tune it to what your reviewers can actually review, in this fi
 
 For any task run through `ai/skills/deliver-feature/`, keep a running checkpoint in your response
 (or, if the tool supports files, in `.ai-run/checkpoint.md`, git-ignored). Update it after every
-step of the skill:
+step of the skill. The format:
 
 ```text
 CHECKPOINT
@@ -81,6 +83,10 @@ Files done: OrderController.java, OrderCancelRequest.java
 Files pending: OrderService.java, OrderControllerTest.java, docs/api/error-catalog.md
 Unverified so far: none
 ```
+
+**One slice, one fresh context.** Quality drops long before the window is full. After a slice is
+verified and committed, write `.ai-run/checkpoint.md` and start the next slice from a fresh
+context that reads it first.
 
 If, when you go to update the checkpoint, you cannot reconstruct a "Decisions locked" line you
 wrote earlier — that is the signal. Stop. Status `FAILED / context-overflow`. Report what is done,
