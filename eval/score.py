@@ -3,7 +3,8 @@
 
 Per (task, model):
   compliance         = runs where archunit ∈ {pass, skipped}, docs-impact pass, report exit 0,
-                       no `forbid` regex matches, every `expect_files` regex matches ≥ 1 file
+                       no `forbid` regex matches, every `expect_files` regex matches ≥ 1 file,
+                       every `expect_content` regex matches the diff
   refused-correctly  = for expect_status FAILED: runs whose report says FAILED with expected reason
   similarity         = mean pairwise Jaccard over changed-file sets
   line-similarity    = mean pairwise |A∩B| / |A∪B| over sets of added lines (whitespace-normalized)
@@ -71,6 +72,10 @@ def score_run(task, rundir):
         # ("^\\+.*class \\w+Controller..."). Without MULTILINE, ^ only matches the start of the
         # whole patch string, so the check silently never fires and a violating run scores 100%.
         "forbid": not any(re.search(rx, patch, re.M) for rx in task.get("forbid", [])),
+        # Symmetric to `forbid`, over the diff rather than the file list. `expect_files` can only
+        # assert that a path exists, which a docs-only edit satisfies — the measured DLQ failure
+        # was exactly that: a `.dlq` row added to a docs table with no handler in code.
+        "expect_content": all(re.search(rx, patch, re.M) for rx in task.get("expect_content", [])),
     }
     expect = task.get("expect_status", "OK").upper()
     if expect == "FAILED":

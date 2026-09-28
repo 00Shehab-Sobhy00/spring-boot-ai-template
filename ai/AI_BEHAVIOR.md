@@ -12,6 +12,21 @@
 - Before implementing a common task, check `ai/skills/` and `ai/patterns/` for an established recipe
   instead of improvising a new one
 
+# Repo Map (graphify)
+
+A map for finding things, never a source of rules. Everything here is optional: no step fails
+because graphify is missing.
+
+- No `graphify-out/`: suggest the one-time setup in `docs/deployment/onboarding.md` → "Map the
+  Repo" once, then work normally. Never run a full `/graphify .` unasked — it costs tokens.
+- Before using it: if code changed since the map was built (e.g. after a `git pull`), run
+  `graphify update .` first — code only, no LLM, seconds.
+- Use it to orient and to size: read `graphify-out/GRAPH_REPORT.md`, then `graphify query`,
+  `graphify path`, or `graphify affected` to find the files and services a task touches.
+- The map points at a file; it does not replace reading it. Read every rule, skill, and source file
+  you rely on — evidence tokens come from files, never from the graph.
+- If the map and a file disagree, the file is right; say so and suggest `/graphify . --update`.
+
 # When There Are Multiple Solutions
 
 - Rank them (recommended first)

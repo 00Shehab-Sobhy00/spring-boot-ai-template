@@ -11,17 +11,9 @@ All rules live under `ai/` — this file only imports them so a rule is edited o
 @ai/REVIEW.md
 @ai/PROJECT_MEMORY.md
 
-Skills: Claude Code discovers `.claude/skills/`, not `ai/skills/`. Point it at the single source
-with one command (no copies, no symlinks committed):
+Skills: Claude Code discovers `.claude/skills/`, not `ai/skills/`. Run the per-clone setup once —
+`scripts/setup-agent-tools.sh` (or `.ps1` on Windows) — it links `.claude/skills` to the single
+source for Claude and every other tool (`AGENTS.md` → Tool Adapters).
 
-```bash
-# from the repo root — run once per clone
-mkdir -p .claude && ln -sfn ../ai/skills .claude/skills
-```
-
-(`.claude/skills` is git-ignored; see `ai/PROJECT_MEMORY.md` → Environment Quirks for why
-symlinks are not committed.)
-
-End-of-task enforcement: `.claude/settings.json` (if present) can attach a `Stop` hook that runs
-`ai/skills/sync-docs/` — opencode has no hook mechanism, so there the rule in `AGENTS.md` is the
-enforcement.
+End-of-task enforcement: `.claude/settings.json` attaches a `Stop` hook that runs
+`scripts/end-of-task-check.py` — every tool has the same hook, see `AGENTS.md` → Tool Adapters.

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": "\"$(command -v python3 || command -v python)\" scripts/end-of-task-check.py --format cursor",
+        "loop_limit": 1
+      }
+    ]
+  }
+}

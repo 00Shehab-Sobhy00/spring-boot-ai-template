@@ -8,8 +8,9 @@ Use this to run the `sync-docs` skill against a pull request — interactively, 
 
 You are working in this repository. Read `AGENTS.md`, then `ai/skills/sync-docs/SKILL.md`.
 
-Input: the diff between `<base>` and `<head>` (run `git diff --name-only <base>...<head>` and
-`git diff <base>...<head>` for the files you need).
+Input: the diff between `<base>` and `<head>` — `<base>` is `origin/main` unless the PR targets
+another branch (run `git diff --name-only <base>...<head>` and `git diff <base>...<head>` for the
+files you need).
 
 Task:
 

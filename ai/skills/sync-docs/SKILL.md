@@ -21,13 +21,16 @@ Follows `AGENTS.md` (single-source rule), `ai/AI_BEHAVIOR.md` (Recording New Kno
 
 ## Steps
 
-1. **Enumerate what changed.** Use the diff (`git diff --name-only <base>` or the files you
-   touched this session). Classify each file by the *kind* of change using the impact table.
+1. **Enumerate what changed.** Use the diff against main (`git fetch origin main`, then
+   `git diff --name-only origin/main...HEAD`) plus any uncommitted files you touched this
+   session. Classify each file by the *kind* of change using the impact table.
 2. **Generated first, hand-written second.** If a target doc is generated (see
    `docs/GENERATED.md`), do not edit it by hand — run or mention the generator. Only edit the
    hand-written columns/sections (owner, retention rationale, business meaning).
 3. **Apply the impact table.** For each row that matches, open the target doc and make the
    smallest correct edit. Match the existing format of the table/section — don't restructure.
+   If you changed any doc and `graphify-out/` exists, run `/graphify . --update` so the repo map
+   picks it up (only the changed files are re-read). No `graphify-out/` → skip, never fail on it.
 4. **Business meaning check.** For any new `if`/validation/threshold on a *domain* field, ask:
    is this a business rule? If yes, it gets a `BR-nnn` id in `docs/business/rules.md` and a
    `// BR-nnn` comment on the condition and its test (see that file for the convention). If
@@ -52,7 +55,7 @@ YAML, run `scripts/render-impact-table.py`, never edit the table by hand (CI che
 | Changed (path or construct) | Update | Rule tokens required in the AI Run Report | CI |
 | --- | --- | --- | --- |
 | `Controller\.java$` / `(?<!/client)(?<!/adapter)/dto/.*\.java$` | OpenAPI annotations in code; `docs/api/error-catalog.md` for new codes; `docs/api/README.md` link if a new spec file appears | `ai/ARCHITECTURE.md`, `ai/skills/create-rest-api/SKILL.md` | error |
-| `Listener\.java$` / `Consumer\.java$` | `docs/messaging/consumers.md`; `docs/architecture/components.md` "Subscribes" column | `ai/skills/kafka/SKILL.md` | error |
+| `Listener\.java$` / `Consumer\.java$` | `docs/messaging/consumers.md`; `docs/architecture/components.md` "Subscribes" column | `ai/skills/kafka/SKILL.md`, `ai/skills/kafka/references/dead-letter-queue.md` | error |
 | `Producer\.java$` / `Publisher\.java$` / `Topics?\.java$` | `docs/messaging/kafka-topics.md` (owner, key, retention, *why*), `docs/messaging/producers.md`, `docs/messaging/schemas.md` (envelope + payload version), `components.md` "Publishes" | `ai/skills/kafka/SKILL.md`, `ai/patterns/outbox-pattern.md` | error |
 | `(Retry` / `Dlq` / `DeadLetter)[^/]*\.java$` | `docs/messaging/retry-policy.md`, `docs/messaging/dlq.md` | `ai/skills/kafka/SKILL.md`, `ai/patterns/retry-pattern.md` | error |
 | `src/main/resources/liquibase/` | `docs/database/schema-conventions.md` only if a convention changed; ADR if a modeling decision; `PROJECT_MEMORY.md` → Active Migrations for expand/contract in flight | `ai/BACKEND_RULES.md`, `ai/skills/database/SKILL.md` | error |

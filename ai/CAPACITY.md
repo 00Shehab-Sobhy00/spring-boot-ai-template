@@ -170,6 +170,9 @@ Rules for the report:
 - `Status: FAILED` requires a `Reason` that is not `none`, and a `Checkpoint` that is not `n/a`.
 - `Rules-read` must contain the token of every file listed under `always_required` in
   `ai/impact-map.yaml`, plus every `requires` entry of every area the diff touched.
+- Cite a skill under `Skills-applied` only if the diff contains work in that skill's area.
+  Over-citation is the same failure class as a fabricated token: it makes a report that looks
+  thorough without being true.
 - `Verified` lists commands, not adjectives. "tests pass" is not a value; `mvn -q test
   -pl orders-service` is.
 

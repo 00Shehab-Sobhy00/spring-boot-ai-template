@@ -43,11 +43,20 @@ Small decisions that don't warrant a full ADR. Format: `YYYY-MM-DD — decision 
 
 ## Environment Quirks
 
-- **Skills discovery**: opencode reads them via the `skills` array in `opencode.json`, which points
-  at `ai/skills`. Skills live only in `ai/skills/` — there is no duplicated copy anywhere,
-  deliberately (one authoritative source). No symlinks are used (they're unreliable on Windows
-  without Developer Mode, and extracting the repo zip with Explorer or `Expand-Archive` turns them
-  into empty 0 KB stubs).
+- **`scripts/check-ai-report.py` on a Windows console**: its output contains `→`, which cp1252
+  cannot encode — the INSTRUCTION-RETENTION-FAILURE branch used to die mid-print and return exit 1
+  instead of its deliberate exit 4. The script now reconfigures stdout to UTF-8; keep that if you
+  touch the top of the file, or the strongest check in the template silently reports the wrong code.
+- **Hook commands and Python**: Windows usually has only `python`, macOS/Linux often only
+  `python3`. The end-of-task hook adapters launch the script with
+  `"$(command -v python3 || command -v python)"` — never `python3 … || python …`, which would re-run
+  the script whenever it deliberately exits non-zero (the Claude `Stop` hook exits 2 to continue).
+- **Skills discovery**: skills live only in `ai/skills/`. opencode reads them via `skills.paths` in
+  `opencode.json`; Claude Code (`.claude/skills`) and Cursor/Copilot (`.agents/skills`) read them
+  through links that are **never committed** — committed symlinks are unreliable on Windows without
+  Developer Mode, and extracting the repo zip with Explorer or `Expand-Archive` turns them into
+  empty 0 KB stubs. `scripts/setup-agent-tools.ps1` uses directory junctions instead, which need
+  neither. opencode also sees `.agents/skills`, and de-duplicates by name.
 - _Example: local Feign calls to `payments-service` fail with a connection reset if the local proxy
   isn't running — start it before running integration tests locally._
 

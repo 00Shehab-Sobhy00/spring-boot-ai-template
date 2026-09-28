@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "\"$(command -v python3 || command -v python)\" scripts/end-of-task-check.py --format copilot",
+        "powershell": "python scripts/end-of-task-check.py --format copilot",
+        "timeoutSec": 30
+      }
+    ]
+  }
+}

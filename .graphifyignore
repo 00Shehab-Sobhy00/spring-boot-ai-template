@@ -1,0 +1,9 @@
+# What graphify (https://github.com/Graphify-Labs/graphify) must not map.
+# Build output and caches are not source of truth (AGENTS.md → Non-Negotiables).
+target/
+.m2/
+helm-chart/charts/
+eval/runs/
+.ai-run/
+# Required by nothing, linked from nowhere — indexing it would link it (ai/CAPACITY.md → Evidence Tokens).
+ai/.evidence-canary.md
