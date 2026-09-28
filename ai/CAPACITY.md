@@ -40,9 +40,27 @@ designed so that **that failure is detected mechanically** rather than assumed a
 
 These are not suggestions; they are the point at which your output quality is known to degrade.
 
-- **> 12 source files to edit** in one task → split into ordered sub-tasks, each with its own report,
-  or declare `FAILED / scope-too-large` and propose the split.
-- **> 3 services touched** → stop and ask (`AGENTS.md` → "Ask before cross-cutting refactors").
+**Decide by risk, not by size.** A rename across 15 files is safe; a lock plus a migration in 3
+files is not. Before you start, stop and ask if any of these holds:
+
+- **> 1 public contract changes** (API, event/topic, DB schema) — each needs its own compatibility
+  and deploy-order decision.
+- **Two high-risk areas together** — migration, concurrency/locking, security, money.
+- **> 3 services touched** (`AGENTS.md` → "Ask before cross-cutting refactors").
+- **A part you cannot verify** — no test or command would prove it works.
+
+Otherwise, split the work into **vertical slices**, each verifiable on its own (a test proves it),
+in dependency order. Prefer one slice per PR. If slices ship in one PR, the `Checkpoint` lists
+them, each with what verified it.
+
+**CI backstop — size.** More than **400 changed lines in `src/main/`** in one PR (added + deleted;
+tests do not count, so writing tests never pushes you over) must be split, carry a `Checkpoint`
+listing the slices, or be reported as `FAILED / scope-too-large` with the split you propose. 400 is
+a starting point: tune it to what your reviewers can actually review, in this file and in
+`scripts/check-ai-report.py` together.
+
+**Context:**
+
 - **> 6 rule/skill/pattern files needed** for one task → write a checkpoint (below) before file 4.
 - **Any rule file you cannot summarize in two lines from memory right now** → re-read it before
   continuing. If re-reading would push out something else you still need → `FAILED /
@@ -80,10 +98,10 @@ in verbatim as if it were a second, independent one.
 
 **Budget crosses the boundary asymmetrically:**
 
-- Files the subagent *read* while exploring do **not** count against the caller's file/service/
+- Files the subagent *read* while exploring do **not** count against the caller's service/
   rule-file budget in the section above — that avoided cost is the entire point of delegating.
 - Files the subagent *edited* count exactly like files you edited yourself, in `Files-edited` and
-  in the 12-file ceiling for the task as a whole.
+  in the changed-line backstop for the task as a whole.
 
 **Folding the subagent's outcome into your own report:**
 

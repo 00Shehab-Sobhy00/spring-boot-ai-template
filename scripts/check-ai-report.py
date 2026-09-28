@@ -10,8 +10,8 @@ What this catches, in order of how often it fires:
     Most likely cause: never read, or fell out of the context window. Reported as
     `instruction-retention-failure` so it is distinguishable from an ordinary rule violation.
   * Unknown tokens → cited but present in no file ⇒ fabricated. Hard fail.
-  * Over budget → more source files changed than ai/CAPACITY.md allows in one task, without a
-    FAILED status or a resumable checkpoint. Hard fail.
+  * Over budget → more changed lines in src/main than ai/CAPACITY.md allows in one PR, without a
+    FAILED status or a checkpoint listing the slices. Hard fail. Tests do not count.
   * Over-citation → a skill cited for an area the diff does not touch. Warning (see
     check_over_citation for why it is not yet a failure).
 
@@ -68,11 +68,12 @@ REQUIRED = ["Status", "Reason", "Model", "Task-shape", "Rules-read", "Skills-app
             "Patterns-applied", "Files-edited", "Verified", "Unverified", "Assumptions",
             "Needs-human", "Checkpoint"]
 CANARY = "CANARY-7QW3ZP"
-# ai/CAPACITY.md → Budget: "> 12 source files to edit in one task → split into ordered sub-tasks
-# ... or declare FAILED / scope-too-large". Mirrored here because the rule text cannot be parsed;
-# change one and change the other, or the budget and its enforcement drift apart silently.
-SOURCE_FILE_BUDGET = 12
-SOURCE_PATH = re.compile(r"(^|/)src/(main|test)/")
+# ai/CAPACITY.md → Budget → CI backstop: "> 400 changed lines in src/main/ in one PR → split, carry
+# a Checkpoint listing the slices, or FAILED / scope-too-large". Mirrored here because the rule text
+# cannot be parsed; change one and change the other, or the budget and its enforcement drift apart.
+CHANGED_LINE_BUDGET = 400
+SOURCE_PATH = re.compile(r"(^|/)src/(main|test)/")   # Files-edited cross-check: code + tests
+BUDGET_PATH = re.compile(r"(^|/)src/main/")          # budget: tests never push a task over
 REASONS = {"none", "context-overflow", "contradictory-rules", "missing-business-rule",
            "rule-ownership-conflict",
            "unverifiable", "scope-too-large", "tooling", "instructions-ambiguous"}
@@ -114,14 +115,30 @@ def changed_paths(base):
     return out.split()
 
 
-def check_budget(rep, status, paths):
-    """ai/CAPACITY.md → Budget: more than SOURCE_FILE_BUDGET source files in one task must be
-    split, or reported as FAILED / scope-too-large with a resumable checkpoint.
+def changed_lines(base):
+    """Added + deleted lines in src/main, from the same base...HEAD diff as changed_paths."""
+    out = subprocess.run(["git", "diff", "--numstat", f"{base}...HEAD"], cwd=ROOT,
+                         capture_output=True, text=True, check=False).stdout
+    total = 0
+    for line in out.splitlines():
+        added, deleted, path = line.split("	", 2)
+        if BUDGET_PATH.search(path) and added != "-":      # "-" = binary file, no line count
+            total += int(added) + int(deleted)
+    return total
 
-    `Files-edited` was required by the report format, parsed, and then never used — so the budget
-    was stated but never enforced, and runs editing 30-50 files reported a passing status. Counted
-    against the real diff rather than the self-report, and restricted to src/main + src/test
-    because the rule says *source* files (docs, helm and k8s do not count).
+
+def check_budget(rep, status, paths, lines):
+    """ai/CAPACITY.md → Budget: more than CHANGED_LINE_BUDGET changed lines in src/main in one PR
+    must be split, carry a Checkpoint listing the slices, or be reported as FAILED /
+    scope-too-large.
+
+    Lines, not files: a rename across 15 files is small and safe; the old 12-file budget stopped it
+    while letting a 3-file lock + migration through. src/main only: counting tests made writing
+    them push a task over budget.
+
+    Counted against the real diff, never the self-report: runs editing 30-50 files once reported a
+    passing status. `Files-edited` is still cross-checked (src/main + src/test file count) as a
+    warning — an agent that misreports the size of its own diff has lost track of more than that.
     """
     if paths is None:
         return                       # no --base: no diff to count. Same graceful degradation as
@@ -135,10 +152,10 @@ def check_budget(rep, status, paths):
               "track of more than that (ai/CAPACITY.md)")
 
     unresumable = rep["Checkpoint"].strip().lower() in {"n/a", "", "none"}
-    if count > SOURCE_FILE_BUDGET and status != "FAILED" and unresumable:
-        die(f"{count} source files changed, over the {SOURCE_FILE_BUDGET}-file budget in "
-            f"ai/CAPACITY.md, with Status {status} and no Checkpoint. Split the task into ordered "
-            "sub-tasks each with its own report, or report `Status: FAILED` / "
+    if lines > CHANGED_LINE_BUDGET and status != "FAILED" and unresumable:
+        die(f"{lines} changed lines in src/main, over the {CHANGED_LINE_BUDGET}-line budget in "
+            f"ai/CAPACITY.md, with Status {status} and no Checkpoint. Split into slices (one PR "
+            "each), list the slices in `Checkpoint`, or report `Status: FAILED` / "
             "`Reason: scope-too-large` with the split you propose.")
 
 
@@ -203,9 +220,10 @@ def main():
 
     # One git call, shared by the budget check, the over-citation check and the area tokens.
     paths = changed_paths(base) if base else None
+    lines = changed_lines(base) if base else 0
 
     # ---- Budget (ai/CAPACITY.md) -------------------------------------------------------------
-    check_budget(rep, status, paths)
+    check_budget(rep, status, paths, lines)
 
     # ---- FAILED: the designed outcome for "LLM cannot handle this" ---------------------------
     if status == "FAILED":
