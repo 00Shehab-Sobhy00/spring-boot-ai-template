@@ -102,16 +102,29 @@ def load_tokens():
 
 
 def parse_report(body):
-    m = re.search(r"### AI Run Report\s*\n(.*?)(?:\n###|\Z)", body, re.S)
-    if not m:
+    """The last `### AI Run Report` block with a Status wins.
+
+    Pasting a filled report under the PR template's own heading leaves the template's blank block
+    (`Status:` with nothing after it) in the body too. Taking the first block then read Status as
+    '' and failed with a message that pointed nowhere near the cause.
+    """
+    blocks = []
+    for m in re.finditer(r"### AI Run Report[^\n]*\n(.*?)(?=\n###|\Z)", body, re.S):
+        rep = {}
+        for line in m.group(1).splitlines():
+            line = line.strip().strip("`")
+            if ":" in line and not line.startswith("<!--"):
+                k, v = line.split(":", 1)
+                rep[k.strip()] = v.strip()
+        if rep:
+            blocks.append(rep)
+    if not blocks:
         return None
-    rep = {}
-    for line in m.group(1).splitlines():
-        line = line.strip().strip("`")
-        if ":" in line and not line.startswith("<!--"):
-            k, v = line.split(":", 1)
-            rep[k.strip()] = v.strip()
-    return rep
+    filled = [b for b in blocks if b.get("Status")]
+    if len(filled) > 1:
+        print(f"::warning:: {len(filled)} filled `### AI Run Report` blocks — using the last one. "
+              "Keep exactly one.")
+    return (filled or blocks)[-1]
 
 
 def changed_paths(base):
@@ -263,6 +276,9 @@ def main():
     if missing:
         die(f"AI Run Report is missing fields: {missing} — format is in ai/CAPACITY.md")
 
+    if not rep["Status"]:
+        die("`Status:` is empty. The PR template's blank `### AI Run Report` block is probably "
+            "still in the body — replace it with your filled report, keeping exactly one block.")
     status = rep["Status"].upper()
     reason = rep["Reason"].lower()
     if status not in {"OK", "DEGRADED", "FAILED"}:
